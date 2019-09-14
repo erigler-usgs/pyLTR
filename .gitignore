@@ -1,0 +1,8 @@
+README_JRIGLER
+*.pyc
+*.pyo
+*.so
+*_bak
+build/
+__pycache__/
+*.egg-info
