@@ -6,12 +6,12 @@ pkgs/geopack-2008 for details.
 Unit test errors suggest that GEOPACK-2008 may not have been compiled
 with 8-byte reals.  See pkgs/geopack-2008/README for details.
 """
-
 import datetime
 
 # Give a more meaningful error to people who don't read instructions:
 try:
-    from . import geopack_08
+    #from . import geopack_08
+    import geopack_08
 except ImportError:
     raise ImportError('No module named "geopack_08".  Did you remember to compile & install the Python wrapping for GEOPACK-2008?')
 

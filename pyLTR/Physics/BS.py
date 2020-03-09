@@ -930,7 +930,7 @@ def test_fukushima_planar():
    Jthetas = np.concatenate((Jthetas, np.zeros(meshThetas.size) ))
 
    # calculate current density by dividing by current segment arclength
-   Jrhos = np.concatenate((Jrhos, np.tile(1./36., 36.*100000) /
+   Jrhos = np.concatenate((Jrhos, np.tile(1./36., 36*100000) /
                            (2*np.pi/36. * meshRhos.flatten()) ) )
 
    # dvecs is the area of current segments, from rho-.5 to rho+.5
@@ -1142,16 +1142,16 @@ def test_SECS_CurlFree():
    # Now, create quasi-infinite line currents into and out of poles
    rhosFAC = np.concatenate((np.linspace(10000000e3, rhos, 100001),
                              np.linspace(rhos, 10000000e3, 100001)) )
-   dvecs = np.concatenate((np.abs(np.diff(rhosFAC[:100001])),
-                           np.abs(np.diff(rhosFAC[100001:])) ) )
+   dvecs = np.concatenate(( np.abs(np.diff(rhosFAC[:100001], axis=0)),
+                            np.abs(np.diff(rhosFAC[100001:], axis=0)) ) )
    rhosFAC = np.concatenate(( (rhosFAC[:100000]+rhosFAC[1:100001])/2,
                               (rhosFAC[100001:-1]+rhosFAC[100002:])/2 ) )
 
    phisFAC = rhosFAC * 0
-   thetasFAC = np.concatenate((np.tile(0, 100000), np.tile(np.pi, 100000)))
+   thetasFAC = np.concatenate((np.tile(0, [100000,1]), np.tile(np.pi, [100000,1])))
 
    # specify current along the Zaxis
-   JrhosFAC = np.concatenate((-np.ones(100000) * I0, np.ones(100000) * I0) )
+   JrhosFAC = np.concatenate((-np.ones((100000,1)) * I0, np.ones((100000,1)) * I0) )
    JphisFAC = JrhosFAC * 0
    JthetasFAC = JrhosFAC * 0
 

@@ -221,7 +221,6 @@ def dalecs_sphere(rion_min, rion_max, Jion, n=10, isI=False):
     minLTEmax = rion_min[2].flat[i] <= rion_max[2].flat[i]
 
 
-
     # call _bostromType1() to generate type 1 discretized Bostrom loops
     (phis1, thetas1, rhos1,
      Jphis1, Jthetas1, Jrhos1,
@@ -568,42 +567,46 @@ def _edgeGrid(rcenter):
       raise Exception('3D meshgrids not implemented yet')
    elif nd > 1:
       #raise Exception, '2D meshgrids not implemented yet'
-
+      
+      # unwrap rcenter (np.unwrap() assumes values are in radians)
+      unwrap_0 = np.unwrap(rcenter[0], axis=0)
+      unwrap_1 = np.unwrap(rcenter[1], axis=1)
+      
       # calculate grid cell boundaries
       rmin = [None] * nd # initialize empty 3 list
       rmin[0] = np.zeros(rcenter[0].shape)
-      rmin[0][1:,:] = rcenter[0][1:,:] - np.diff(rcenter[0], axis=0)/2.
-      rmin[0][0,:] = rcenter[0][0,:] - np.diff(rcenter[0][0:2,:], axis=0).squeeze()/2.
+      rmin[0][1:,:] = rcenter[0][1:,:] - np.diff(unwrap_0, axis=0)/2.
+      rmin[0][0,:] = rcenter[0][0,:] - np.diff(unwrap_0[0:2,:], axis=0).squeeze()/2.
 
       rmin[1] = np.zeros(rcenter[1].shape)
-      rmin[1][:,1:] = rcenter[1][:,1:] - np.diff(rcenter[1], axis=1)/2.
-      rmin[1][:,0] = rcenter[1][:,0] - np.diff(rcenter[1][:,0:2], axis=1).squeeze()/2.
-
+      rmin[1][:,1:] = rcenter[1][:,1:] - np.diff(unwrap_1, axis=1)/2.
+      rmin[1][:,0] = rcenter[1][:,0] - np.diff(unwrap_1[:,0:2], axis=1).squeeze()/2.
 
       rmax = [None] * nd # initialize empty 3 list
       rmax[0] = np.zeros(rcenter[0].shape)
-      rmax[0][:-1,:] = rcenter[0][:-1,:] + np.diff(rcenter[0], axis=0)/2.
-      rmax[0][-1,:] = rcenter[0][-1,:] + np.diff(rcenter[0][-2:,:], axis=0).squeeze()/2.
-
+      rmax[0][:-1,:] = rcenter[0][:-1,:] + np.diff(unwrap_0, axis=0)/2.
+      rmax[0][-1,:] = rcenter[0][-1,:] + np.diff(unwrap_0[-2:,:], axis=0).squeeze()/2.
+      
       rmax[1] = np.zeros(rcenter[1].shape)
-      rmax[1][:,:-1] = rcenter[1][:,:-1] + np.diff(rcenter[1], axis=1)/2.
-      rmax[1][:,-1] = rcenter[1][:,-1] + np.diff(rcenter[1][:,-2:], axis=1).squeeze()/2.
-
+      rmax[1][:,:-1] = rcenter[1][:,:-1] + np.diff(unwrap_1, axis=1)/2.
+      rmax[1][:,-1] = rcenter[1][:,-1] + np.diff(unwrap_1[:,-2:], axis=1).squeeze()/2.
+      
    else:
       # raise Exception, '1D meshgrids not implemented yet'
 
+      # unwrap rcenter (np.unwrap() assumes values are in radians)
+      unwrap_0 = np.unwrap(rcenter[0], axis=0)
+      
       # calculate grid cell boundaries
       rmin = [None] * nd # initialize empty 3 list
       rmin[0] = np.zeros(rcenter[0].shape)
-      rmin[0][1:] = rcenter[0][1:] - np.diff(rcenter[0], axis=0)/2.
-      rmin[0][0] = rcenter[0][0] - np.diff(rcenter[0][0:2], axis=0).squeeze()/2.
-
+      rmin[0][1:] = rcenter[0][1:] - np.diff(unwrap_0, axis=0)/2.
+      rmin[0][0] = rcenter[0][0] - np.diff(unwrap_0[0:2], axis=0).squeeze()/2.
 
       rmax = [None] * nd # initialize empty 3 list
       rmax[0] = np.zeros(rcenter[0].shape)
-      rmax[0][:-1] = rcenter[0][:-1] + np.diff(rcenter[0], axis=0)/2.
-      rmax[0][-1] = rcenter[0][-1] + np.diff(rcenter[0][-2:], axis=0).squeeze()/2.
-
+      rmax[0][:-1] = rcenter[0][:-1] + np.diff(unwrap_0, axis=0)/2.
+      rmax[0][-1] = rcenter[0][-1] + np.diff(unwrap_0[-2:], axis=0).squeeze()/2.
 
    return rmin,rmax
 
@@ -625,160 +628,176 @@ def _bostromType1(phi_min, phi_max,
   #        the Dipole Coordinate System", arXiv:physics/0606044v1.
   #
 
-  # initialize arrays to hold data for discrete Bostrom loop elements
-  qs = np.zeros(2*n+2)
-  ps = np.zeros(2*n+2)
-  phis = np.zeros(2*n+2)
-  dl_perp = np.zeros(2*n+2)
-  dl_para = np.zeros(2*n+2)
-  Iqs = np.zeros(2*n+2)
-  Ips = np.zeros(2*n+2)
-  Iphis = np.zeros(2*n+2)
-
-  #
-  # First, generate position vectors for centers of current (density) elements
-  #
-
-  # ionospheric element
-  qs[0] = np.cos((theta_max+theta_min)/2.) / rho_min**2.
-  ps[0] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
-  phis[0] = (phi_max+phi_min)/2.
-
-  # equatorial element
-  qs[1*n+1] = 0
-  ps[1*n+1] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
-  phis[1*n+1] = (phi_max+phi_min)/2.
-
-  # E FAC elements
-  q_avg = np.cos((theta_min + theta_max) / 2.) / rho_min**2.
-  qs[0*n+1:1*n+1] = (np.linspace(q_avg, 0, n+1)[:-1] +
-                      np.linspace(q_avg, 0, n+1)[1:]) / 2.
-  ps[0*n+1:1*n+1] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
-  phis[0*n+1:1*n+1] = phi_max
-
-  # W FAC elements
-  q_avg = np.cos((theta_min + theta_max) / 2.) / rho_min**2.
-  qs[1*n+2:2*n+2] = (np.linspace(0, q_avg, n+1)[:-1] +
-                     np.linspace(0, q_avg, n+1)[1:]) / 2.
-  ps[1*n+2:2*n+2] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
-  phis[1*n+2:2*n+2] = phi_min
-
-  # convert qs and ps to rhos and thetas...phis remain unchanged
-  (rhos, thetas) = _dp2sp_pos(qs, ps)
-
-
-  #
-  # Next, calculate pathlengths perpendicular to current density element at
-  # elements' positions; this is the cross-section that defines the current
-  # *sheet* density
-  #
-
-  if isI:
-
-     # don't waste cpu cycles if current density is not requested
-     dl_perp[:] = 1.
+  if rho_min == rho_max:
+    # bypass any dipole coordinate stuff if it's going to be trimmed later
+    phis = np.atleast_1d((phi_min + phi_max) / 2.)
+    thetas = np.atleast_1d((theta_min + theta_max) / 2.)
+    rhos = np.atleast_1d(rho_min)
+    Jphis = np.atleast_1d(Jphi)
+    Jthetas = np.atleast_1d(0.)
+    Jrhos = np.atleast_1d(0.)
+    dl_para = np.atleast_1d(rhos * np.sin(thetas) * (phi_max - phi_min))
+    if isI:
+      dl_perp = np.atleast_1d(1.)
+    else:
+      dl_perp = np.atleast_1d(rhos * (theta_max - theta_min))
 
   else:
+    
+    # initialize arrays to hold data for discrete Bostrom loop elements
+    qs = np.zeros(2*n+2)
+    ps = np.zeros(2*n+2)
+    phis = np.zeros(2*n+2)
+    dl_perp = np.zeros(2*n+2)
+    dl_para = np.zeros(2*n+2)
+    Iqs = np.zeros(2*n+2)
+    Ips = np.zeros(2*n+2)
+    Iphis = np.zeros(2*n+2)
 
-     # ionospheric element
-     dl_perp[0] = rho_min * (theta_max-theta_min)
+    #
+    # First, generate position vectors for centers of current (density) elements
+    #
 
-     # equatorial element
-     dp = rho_min / np.sin(theta_min)**2 - rho_min / np.sin(theta_max)**2.
-     dl_perp[1*n+1] = (dp * np.sin(thetas[1*n+1])**3. /
-                       np.sqrt(1. + 3.*np.cos(thetas[1*n+1])**2.) )
+    # ionospheric element
+    qs[0] = np.cos((theta_max+theta_min)/2.) / rho_min**2.
+    ps[0] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
+    phis[0] = (phi_max+phi_min)/2.
 
-     # E FAC elements
-     dl_perp[0*n+1:1*n+1] = (dp * np.sin(thetas[0*n+1:1*n+1])**3. /
-                          np.sqrt(1. + 3.*np.cos(thetas[0*n+1:1*n+1])**2.) )
+    # equatorial element
+    qs[1*n+1] = 0
+    ps[1*n+1] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
+    phis[1*n+1] = (phi_max+phi_min)/2.
 
-     # W FAC elements
-     dl_perp[1*n+2:2*n+2] = (dp * np.sin(thetas[1*n+2:2*n+2])**3. /
-                             np.sqrt(1. + 3.*np.cos(thetas[1*n+2:2*n+2])**2.) )
+    # E FAC elements
+    q_avg = np.cos((theta_min + theta_max) / 2.) / rho_min**2.
+    qs[0*n+1:1*n+1] = (np.linspace(q_avg, 0, n+1)[:-1] +
+                       np.linspace(q_avg, 0, n+1)[1:]) / 2.
+    ps[0*n+1:1*n+1] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
+    phis[0*n+1:1*n+1] = phi_max
 
+    # W FAC elements
+    q_avg = np.cos((theta_min + theta_max) / 2.) / rho_min**2.
+    qs[1*n+2:2*n+2] = (np.linspace(0, q_avg, n+1)[:-1] +
+                       np.linspace(0, q_avg, n+1)[1:]) / 2.
+    ps[1*n+2:2*n+2] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
+    phis[1*n+2:2*n+2] = phi_min
 
-  # for now, just set all Inf values to NaN, adn treat as missing data in
-  # any subsequent processing
-  dl_perp[np.isinf(dl_perp)] = np.nan
-
-
-  #
-  # Next, calculate pathlengths parallel to current (density) element at
-  # elements' positions; this is the path along which a line integral would
-  # be calculated in, for example, the Biot-Savart equations.
-  #
-
-  dphi = (phi_max-phi_min)
-  dtheta=(theta_max-theta_min)
-
-  # ionospheric element
-  dl_para[0] = rho_min * np.sin((theta_max+theta_min)/2.) * dphi
-
-  # equatorial element
-  dl_para[1*n+1] = dphi * rhos[1*n+1]  * np.sin(thetas[1*n+1])
-
-  # E FAC elements
-  dqE = qs[1] - qs[2]
-  dl_para[0*n+1:1*n+1] = (dqE * rhos[0*n+1:1*n+1]**3. /
-                          np.sqrt(1. + 3.*np.cos(thetas[0*n+1:1*n+1])**2.) )
-
-  # W FAC elements
-  dqW = qs[1*n+3] - qs[1*n+2]
-  dl_para[1*n+2:2*n+2] = (dqW * rhos[1*n+2:2*n+2]**3. /
-                          np.sqrt(1. + 3.*np.cos(thetas[1*n+2:2*n+2])**2.) )
+    # convert qs and ps to rhos and thetas...phis remain unchanged
+    (rhos, thetas) = _dp2sp_pos(qs, ps)
 
 
-  # For now, just set all Inf values to NaN, and treat as missing data in
-  # any subsequent processing.
-  dl_para[np.isinf(dl_para)] = np.nan
+    #
+    # Next, calculate pathlengths perpendicular to current density element at
+    # elements' positions; this is the cross-section that defines the current
+    # *sheet* density
+    #
+
+    if isI:
+
+      # don't waste cpu cycles if current density is not requested
+      dl_perp[:] = 1.
+
+    else:
+
+      # ionospheric element
+      dl_perp[0] = rho_min * (theta_max-theta_min)
+
+      # equatorial element
+      dp = rho_min / np.sin(theta_min)**2 - rho_min / np.sin(theta_max)**2.
+      dl_perp[1*n+1] = (dp * np.sin(thetas[1*n+1])**3. /
+                        np.sqrt(1. + 3.*np.cos(thetas[1*n+1])**2.) )
+
+      # E FAC elements
+      dl_perp[0*n+1:1*n+1] = (dp * np.sin(thetas[0*n+1:1*n+1])**3. /
+                              np.sqrt(1. + 3.*np.cos(thetas[0*n+1:1*n+1])**2.) )
+
+      # W FAC elements
+      dl_perp[1*n+2:2*n+2] = (dp * np.sin(thetas[1*n+2:2*n+2])**3. /
+                              np.sqrt(1. + 3.*np.cos(thetas[1*n+2:2*n+2])**2.) )
 
 
-  #
-  # Next, generate current vectors in dipole coordinates
-  #
-
-  # convert ionospheric current density into simple current
-
-  if isI:
-     #Itheta = Jtheta
-     Iphi = Jphi
-  else:
-     #Itheta = Jtheta * (rho_min * np.sin((theta_max+theta_min)/2.) * dphi)
-     Iphi = Jphi * (rho_min * dtheta) # phi component
-
-  # ionospheric element
-  Iqs[0] = 0
-  Ips[0] = 0
-  Iphis[0] = Iphi
-
-  # equatorial element
-  Iqs[1*n+1] = 0
-  Ips[1*n+1] = 0
-  Iphis[1*n+1] = -Iphi
-
-  # E FAC elements
-  Iqs[0*n+1:1*n+1] = -Iphi
-  Ips[0*n+1:1*n+1] = 0
-  Iphis[0*n+1:1*n] = 0
-
-  # W FAC elements
-  Iqs[1*n+2:2*n+2] = Iphi
-  Ips[1*n+2:2*n+2] = 0
-  Iphis[1*n+2:2*n+2] = 0
+    # for now, just set all Inf values to NaN, adn treat as missing data in
+    # any subsequent processing
+    dl_perp[np.isinf(dl_perp)] = np.nan
 
 
-  #
-  # Next, convert currents in dipole coordinates to currents in spherical
-  #
-  (Irhos, Ithetas) = _dp2sp_dir(Iqs, Ips, thetas)
+    #
+    # Next, calculate pathlengths parallel to current (density) element at
+    # elements' positions; this is the path along which a line integral would
+    # be calculated in, for example, the Biot-Savart equations.
+    #
+
+    dphi = (phi_max-phi_min)
+    dtheta=(theta_max-theta_min)
+
+    # ionospheric element
+    dl_para[0] = rho_min * np.sin((theta_max+theta_min)/2.) * dphi
+
+    # equatorial element
+    dl_para[1*n+1] = dphi * rhos[1*n+1]  * np.sin(thetas[1*n+1])
+
+    # E FAC elements
+    dqE = qs[1] - qs[2]
+    dl_para[0*n+1:1*n+1] = (dqE * rhos[0*n+1:1*n+1]**3. /
+                            np.sqrt(1. + 3.*np.cos(thetas[0*n+1:1*n+1])**2.) )
+
+    # W FAC elements
+    dqW = qs[1*n+3] - qs[1*n+2]
+    dl_para[1*n+2:2*n+2] = (dqW * rhos[1*n+2:2*n+2]**3. /
+                            np.sqrt(1. + 3.*np.cos(thetas[1*n+2:2*n+2])**2.) )
 
 
-  #
-  # Finally, divide current vectors by dl_perp to create current densities
-  #
-  Jrhos = Irhos / dl_perp
-  Jthetas = Ithetas / dl_perp
-  Jphis = Iphis / dl_perp
+    # For now, just set all Inf values to NaN, and treat as missing data in
+    # any subsequent processing.
+    dl_para[np.isinf(dl_para)] = np.nan
+
+
+    #
+    # Next, generate current vectors in dipole coordinates
+    #
+
+    # convert ionospheric current density into simple current
+
+    if isI:
+      #Itheta = Jtheta
+      Iphi = Jphi
+    else:
+      #Itheta = Jtheta * (rho_min * np.sin((theta_max+theta_min)/2.) * dphi)
+      Iphi = Jphi * (rho_min * dtheta) # phi component
+
+    # ionospheric element
+    Iqs[0] = 0
+    Ips[0] = 0
+    Iphis[0] = Iphi
+
+    # equatorial element
+    Iqs[1*n+1] = 0
+    Ips[1*n+1] = 0
+    Iphis[1*n+1] = -Iphi
+
+    # E FAC elements
+    Iqs[0*n+1:1*n+1] = -Iphi
+    Ips[0*n+1:1*n+1] = 0
+    Iphis[0*n+1:1*n] = 0
+
+    # W FAC elements
+    Iqs[1*n+2:2*n+2] = Iphi
+    Ips[1*n+2:2*n+2] = 0
+    Iphis[1*n+2:2*n+2] = 0
+
+
+    #
+    # Next, convert currents in dipole coordinates to currents in spherical
+    #
+    (Irhos, Ithetas) = _dp2sp_dir(Iqs, Ips, thetas)
+
+
+    #
+    # Finally, divide current vectors by dl_perp to create current densities
+    #
+    Jrhos = Irhos / dl_perp
+    Jthetas = Ithetas / dl_perp
+    Jphis = Iphis / dl_perp
 
 
   return (phis, thetas, rhos, Jphis, Jthetas, Jrhos, dl_para, dl_perp)
@@ -800,171 +819,187 @@ def _bostromType2(phi_min, phi_max,
   #        the Dipole Coordinate System", arXiv:physics/0606044v1.
   #
 
-  # initialize arrays to hold data for discrete Bostrom loop elements
-  qs = np.zeros(2*n+2)
-  ps = np.zeros(2*n+2)
-  phis = np.zeros(2*n+2)
-  dl_perp = np.zeros(2*n+2)
-  dl_para = np.zeros(2*n+2)
-  Iqs = np.zeros(2*n+2)
-  Ips = np.zeros(2*n+2)
-  Iphis = np.zeros(2*n+2)
-
-  #
-  # First, generate position vectors for centers of current (density) elements
-  #
-  # ionospheric element
-  qs[0] = np.cos((theta_max+theta_min)/2.) / rho_min**2.
-  ps[0] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
-  phis[0] = (phi_max+phi_min)/2.
-
-  # equatorial element
-  qs[1*n+1] = 0
-  ps[1*n+1] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
-  phis[1*n+1] = (phi_max+phi_min)/2.
-
-  # S FAC elements
-  q_max = np.cos(theta_max) / rho_min**2.
-  qs[0*n+1:1*n+1] = (np.linspace(q_max, 0, n+1)[:-1] +
-                     np.linspace(q_max, 0, n+1)[1:]) / 2.
-
-  ps [0*n+1:1*n+1] = rho_min / np.sin(theta_max)**2.
-  phis [0*n+1:1*n+1] = (phi_max+phi_min)/2.
-
-  # N FAC elements
-  q_min = np.cos(theta_min) / rho_min**2.
-  qs[1*n+2:2*n+2] = (np.linspace(0, q_min, n+1)[:-1] +
-                     np.linspace(0, q_min, n+1)[1:]) / 2.
-
-  ps[1*n+2:2*n+2] = rho_min / np.sin(theta_min)**2.
-  phis[1*n+2:2*n+2] = (phi_max+phi_min)/2.
-
-
-
-  # convert qs and ps to rhos and thetas...phis remain unchanged
-  (rhos, thetas) = _dp2sp_pos(qs, ps)
-
-
-  #
-  # Next, calculate pathlengths perpendicular to current density element at
-  # elements' positions;
-  #
-
-  if isI:
-
-     # don't waste cpu cycles if current density is not requested
-     dl_perp[:] = 1.
-
+  if rho_min == rho_max:
+    # bypass any dipole coordinate stuff if it's going to be trimmed later
+    phis = np.atleast_1d((phi_min + phi_max) / 2.)
+    thetas = np.atleast_1d((theta_min + theta_max) / 2.)
+    rhos = np.atleast_1d(rho_min)
+    Jphis = np.atleast_1d(0.)
+    Jthetas = np.atleast_1d(Jtheta)
+    Jrhos = np.atleast_1d(0.)
+    dl_para = np.atleast_1d(rhos * (theta_max - theta_min)  )
+    if isI:
+      dl_perp = np.atleast_1d(1.)
+    else:
+      dl_perp = np.atleast_1d(rhos * np.sin(thetas) * (phi_max - phi_min))
+      
   else:
 
-    dphi = (phi_max-phi_min)
+    # initialize arrays to hold data for discrete Bostrom loop elements
+    qs = np.zeros(2*n+2)
+    ps = np.zeros(2*n+2)
+    phis = np.zeros(2*n+2)
+    dl_perp = np.zeros(2*n+2)
+    dl_para = np.zeros(2*n+2)
+    Iqs = np.zeros(2*n+2)
+    Ips = np.zeros(2*n+2)
+    Iphis = np.zeros(2*n+2)
 
+    #
+    # First, generate position vectors for centers of current (density) elements
+    #
     # ionospheric element
-    dl_perp[0] = rho_min * np.sin((theta_max+theta_min)/2.) * dphi
+    qs[0] = np.cos((theta_max+theta_min)/2.) / rho_min**2.
+    ps[0] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
+    phis[0] = (phi_max+phi_min)/2.
 
     # equatorial element
-    dl_perp[1*n+1] = dphi * rhos[1*n+1] * np.sin(thetas[1*n+1])
+    qs[1*n+1] = 0
+    ps[1*n+1] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
+    phis[1*n+1] = (phi_max+phi_min)/2.
 
     # S FAC elements
-    dl_perp[0*n+1:1*n+1] = dphi * rhos[0*n+1:1*n+1] * np.sin(thetas[0*n+1:1*n+1])
+    q_max = np.cos(theta_max) / rho_min**2.
+    qs[0*n+1:1*n+1] = (np.linspace(q_max, 0, n+1)[:-1] +
+                       np.linspace(q_max, 0, n+1)[1:]) / 2.
+
+    ps [0*n+1:1*n+1] = rho_min / np.sin(theta_max)**2.
+    phis [0*n+1:1*n+1] = (phi_max+phi_min)/2.
 
     # N FAC elements
-    dl_perp[1*n+2:2*n+2] = dphi * rhos[1*n+2:2*n+2] * np.sin(thetas[1*n+2:2*n+2])
+    q_min = np.cos(theta_min) / rho_min**2.
+    qs[1*n+2:2*n+2] = (np.linspace(0, q_min, n+1)[:-1] +
+                       np.linspace(0, q_min, n+1)[1:]) / 2.
+
+    ps[1*n+2:2*n+2] = rho_min / np.sin(theta_min)**2.
+    phis[1*n+2:2*n+2] = (phi_max+phi_min)/2.
 
 
-  # for now, just set all Inf values to NaN, adn treat as missing data in
-  # any subsequent processing
-  dl_perp[np.isinf(dl_perp)] = np.nan
+
+    # convert qs and ps to rhos and thetas...phis remain unchanged
+    (rhos, thetas) = _dp2sp_pos(qs, ps)
 
 
-
-  #
-  # Next, calculate pathlengths parallel to current (density) element at
-  # elements' positions;
-  #
-
-  dphi = (phi_max-phi_min)
-  dtheta=(theta_max-theta_min)
-
-  # ionospheric element
-  dl_para[0] = rho_min * dtheta
-
-  # equatorial element
-  dp = rho_min / np.sin(theta_min)**2 - rho_min / np.sin(theta_max)**2.
-  dl_para[1*n+1] = (dp * np.sin(thetas[1*n+1])**3. /
-                    np.sqrt(1. + 3.*np.cos(thetas[1*n+1])**2.) )
-
-  # S FAC elements
-  dqS = qs[0*n+1] - qs[0*n+2]
-  dl_para[0*n+1:1*n+1] = (dqS * rhos[0*n+1:1*n+1]**3. /
-                          np.sqrt(1. + 3.*np.cos(thetas[0*n+1:1*n+1])**2.) )
-
-  # N FAC elements
-  dqN = qs[1*n+3] - qs[1*n+2]
-  dl_para[1*n+2:2*n+2] = (dqN * rhos[1*n+2:2*n+2]**3. /
-                          np.sqrt(1. + 3.*np.cos(thetas[1*n+2:2*n+2])**2.) )
-
-
-  # For now, just set all Inf values to NaN, and treat as missing data in
-  # any subsequent processing.
-  dl_para[np.isinf(dl_para)] = np.nan
-
-
-  #
-  # Next, generate current vectors in dipole coordinates
+    #
+    # Next, calculate pathlengths perpendicular to current density element at
+    # elements' positions;
   #
 
-  # convert ionospheric current density into simple current
+    if isI:
 
-  if isI:
-     Itheta = Jtheta
-     #Iphi = Jphi
-  else:
-     Itheta = Jtheta * (rho_min * np.sin((theta_max+theta_min)/2.) * dphi)
-     #Iphi = Jphi * (rho_min * dtheta) # phi component
+      # don't waste cpu cycles if current density is not requested
+      dl_perp[:] = 1.
 
+    else:
 
+      dphi = (phi_max-phi_min)
 
-  # NOTE: in nature, ionospheric current is NOT thought to flow on constant
-  #       q or p, but rather it has components in both "directions". However,
-  #       FACs do flow along lines of constant p, and equatorial currents flow
-  #       along a line of constant q (i.e., q=0), We force this onto our
-  #       current loops, which should transform into a purely theta current.
-  #       This calculation is not actually required. -EJR
+      # ionospheric element
+      dl_perp[0] = rho_min * np.sin((theta_max+theta_min)/2.) * dphi
 
-  # ionospheric element
-  Iqs[0] = -np.sin((theta_max+theta_min)/2.) / np.sqrt(1. + 3.*np.cos((theta_max+theta_min)/2.)**2.) * Itheta
-  Ips[0] = -2*np.cos((theta_max+theta_min)/2.) / np.sqrt(1. + 3.*np.cos((theta_max+theta_min)/2.)**2.) * Itheta
-  Iphis[0] = 0
+      # equatorial element
+      dl_perp[1*n+1] = dphi * rhos[1*n+1] * np.sin(thetas[1*n+1])
 
-  # equatorial element
-  Iqs[1*n+1] = 0
-  Ips[1*n+1] = Itheta
-  Iphis[1*n+1] = 0
+      # S FAC elements
+      dl_perp[0*n+1:1*n+1] = dphi * rhos[0*n+1:1*n+1] * np.sin(thetas[0*n+1:1*n+1])
 
-  # S FAC elements
-  Iqs[0*n+1:1*n+1] = -Itheta
-  Ips[0*n+1:1*n+1] = 0
-  Iphis[0*n+1:1*n+1] = 0
-
-  # N FAC elements
-  Iqs[1*n+2:2*n+2] = Itheta
-  Ips[1*n+2:2*n+2] = 0
-  Iphis[1*n+2:2*n+2] = 0
+      # N FAC elements
+      dl_perp[1*n+2:2*n+2] = dphi * rhos[1*n+2:2*n+2] * np.sin(thetas[1*n+2:2*n+2])
 
 
-  #
-  # Next, convert currents in dipole coordinates to currents in spherical
-  #
-  (Irhos, Ithetas) = _dp2sp_dir(Iqs, Ips, thetas)
+    # for now, just set all Inf values to NaN, adn treat as missing data in
+    # any subsequent processing
+    dl_perp[np.isinf(dl_perp)] = np.nan
 
 
-  #
-  # Finally, divide current vectors by dl_perp to create current densities
-  #
-  Jrhos = Irhos / dl_perp
-  Jthetas = Ithetas / dl_perp
-  Jphis = Iphis / dl_perp
+
+    #
+    # Next, calculate pathlengths parallel to current (density) element at
+    # elements' positions;
+    #
+
+    dphi = (phi_max-phi_min)
+    dtheta=(theta_max-theta_min)
+
+    # ionospheric element
+    dl_para[0] = rho_min * dtheta
+
+    # equatorial element
+    dp = rho_min / np.sin(theta_min)**2 - rho_min / np.sin(theta_max)**2.
+    dl_para[1*n+1] = (dp * np.sin(thetas[1*n+1])**3. /
+                      np.sqrt(1. + 3.*np.cos(thetas[1*n+1])**2.) )
+
+    # S FAC elements
+    dqS = qs[0*n+1] - qs[0*n+2]
+    dl_para[0*n+1:1*n+1] = (dqS * rhos[0*n+1:1*n+1]**3. /
+                            np.sqrt(1. + 3.*np.cos(thetas[0*n+1:1*n+1])**2.) )
+
+    # N FAC elements
+    dqN = qs[1*n+3] - qs[1*n+2]
+    dl_para[1*n+2:2*n+2] = (dqN * rhos[1*n+2:2*n+2]**3. /
+                            np.sqrt(1. + 3.*np.cos(thetas[1*n+2:2*n+2])**2.) )
+
+
+    # For now, just set all Inf values to NaN, and treat as missing data in
+    # any subsequent processing.
+    dl_para[np.isinf(dl_para)] = np.nan
+
+
+    #
+    # Next, generate current vectors in dipole coordinates
+    #
+
+    # convert ionospheric current density into simple current
+
+    if isI:
+      Itheta = Jtheta
+      #Iphi = Jphi
+    else:
+      Itheta = Jtheta * (rho_min * np.sin((theta_max+theta_min)/2.) * dphi)
+      #Iphi = Jphi * (rho_min * dtheta) # phi component
+
+
+
+    # NOTE: in nature, ionospheric current is NOT thought to flow on constant
+    #       q or p, but rather it has components in both "directions". However,
+    #       FACs do flow along lines of constant p, and equatorial currents flow
+    #       along a line of constant q (i.e., q=0), We force this onto our
+    #       current loops, which should transform into a purely theta current.
+    #       This calculation is not actually required. -EJR
+
+    # ionospheric element
+    Iqs[0] = -np.sin((theta_max+theta_min)/2.) / np.sqrt(1. + 3.*np.cos((theta_max+theta_min)/2.)**2.) * Itheta
+    Ips[0] = -2*np.cos((theta_max+theta_min)/2.) / np.sqrt(1. + 3.*np.cos((theta_max+theta_min)/2.)**2.) * Itheta
+    Iphis[0] = 0
+
+    # equatorial element
+    Iqs[1*n+1] = 0
+    Ips[1*n+1] = Itheta
+    Iphis[1*n+1] = 0
+
+    # S FAC elements
+    Iqs[0*n+1:1*n+1] = -Itheta
+    Ips[0*n+1:1*n+1] = 0
+    Iphis[0*n+1:1*n+1] = 0
+
+    # N FAC elements
+    Iqs[1*n+2:2*n+2] = Itheta
+    Ips[1*n+2:2*n+2] = 0
+    Iphis[1*n+2:2*n+2] = 0
+
+
+    #
+    # Next, convert currents in dipole coordinates to currents in spherical
+    #
+    (Irhos, Ithetas) = _dp2sp_dir(Iqs, Ips, thetas)
+
+
+    #
+    # Finally, divide current vectors by dl_perp to create current densities
+    #
+    Jrhos = Irhos / dl_perp
+    Jthetas = Ithetas / dl_perp
+    Jphis = Iphis / dl_perp
 
 
   return (phis, thetas, rhos, Jphis, Jthetas, Jrhos, dl_para, dl_perp)
