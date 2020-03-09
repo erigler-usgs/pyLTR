@@ -65,6 +65,10 @@ class TIEGCM(Model):
           runName: Optional parameter.  When specified, it searches
           runPath/runName* for files.  This is useful for single
           directories containing multiple runs.
+        
+        NOTE: As of 12/2019, TIEGCM output files may have filenames that
+              look like '[runName]_sech_tie_1995-03-21T16-00-00*.nc'. 
+              I changed the regex expression to allow this. -EJR
         """
         Model.__init__(self, runPath, runName)
 
@@ -74,7 +78,7 @@ class TIEGCM(Model):
         
         if not self.runName:
             regex = (r'^([\S\-]+)' + # \S is "digits, letters and underscore".
-                     r'_sech_tie_\d{4}\-\d{2}\-\d{2}T\d{2}.nc$')
+                     r'_sech_tie_\d{4}\-\d{2}\-\d{2}T\d{2}.*?.nc$')
             r = re.match(regex, os.path.basename(self.__fileList[0]))
             if len(r.groups()) < 1:
                 raise Exception('Could not determine run name.  Are you looking at the correct directory?')
@@ -83,6 +87,7 @@ class TIEGCM(Model):
         self.__io = NetcdfIo( self.__fileList[0] )
         
         self.__timeRange = []
+        self.__timeFile = []
         self.getTimeRange()
 
 
@@ -95,17 +100,20 @@ class TIEGCM(Model):
           '[runName]_tie_1995-03-21T16.nc'
           '[runName]_sech_tie_1995-03-21T16.nc'
         with multiple time steps per file.
+        
+        NOTE: As of 12/2019, TIEGCM output files may have filenames that
+              look like '[runName]_sech_tie_1995-03-21T16-00-00*.nc'. 
+              I changed the regex expression to allow this. -EJR
         """
         if not self.__timeRange:
             for f in self.__fileList:
                 regex = ( r'^' + self.runName + '_sech_tie_' +
                           r'(\d{4})\-(\d{2})\-(\d{2})' +
                           r'T' +
-                          r'(\d{2})\-(\d{2})\-(\d{2})' +
-                          r'.nc$' )
+                          r'(\d{2}).*?.nc$' )
             
                 r = re.match(regex, os.path.basename(f))
-            
+                
                 assert( len(r.groups()) == 4 )
                 t = [ int(match) for match in r.groups() ]
 
@@ -116,15 +124,19 @@ class TIEGCM(Model):
                 years = self.__io.read('year').data
                 times = self.__io.read('mtime').data
                 assert( len(years) == len(times) )
-
                 for i in range(len(years)):
                     # set year
                     d  = datetime.datetime( years[i],1,1 )
-                    d += datetime.timedelta( times[i][0] - 1, # month & day of year
-                                             times[i][1]*60.0*60.0 + # hour of day
-                                             times[i][2]*60.0 # minute of day.
+                    # As of 12/2019, datetime.timedelta() cannot seem to handle np.int64
+                    # as an input for seconds, so convert to something it likes. -EJR
+                    d += datetime.timedelta( int(times[i][0] - 1), # month & day of year
+                                             int(times[i][1]*60.0*60.0 + # hour of day
+                                                 times[i][2]*60.0 )# minute of day.
                                              )
                     self.__timeRange.append( d )
+
+                    # also need to track which file each time stamp came from -EJR
+                    self.__timeFile.append( f )
                                 
         return self.__timeRange
         
@@ -137,16 +149,17 @@ class TIEGCM(Model):
         # Check the input:
         assert( isinstance(time, datetime.datetime) )
         
-        # Find the index corresponding to this time value
-        filename  = os.path.join(self.runPath, self.runName)
-        filename += ( '_sech_tie_%04d-%02d-%02dT%02d.nc' % (time.year, time.month, time.day,
-                                                            time.hour) )
-        
-        # This will raise an exception if the time slice is missing:        
-        (self.__timeRange).index(time)
-        
-        # Set this filename for IO.
-        self.__io.setFilename(filename)
+        # # Find the index corresponding to this time value
+        # filename  = os.path.join(self.runPath, self.runName)
+        # filename += ( '_sech_tie_%04d-%02d-%02dT%02d.nc' % (time.year, time.month, time.day,
+        #                                                     time.hour) )
+        #  
+        # # This will raise an exception if the time slice is missing:        
+        # (self.__timeRange).index(time)
+        # 
+        # # Set this filename for IO.
+        # self.__io.setFilename(filename)
+        self.__io.setFilename(self.__timeFile[self.__timeRange.index(time)])
 
 
     def getAttributeNames(self):

@@ -345,7 +345,6 @@ def extractQuantities(path='./', run='',
        raise Exception(('Each observatory list must contain 3 floats (coordinates) plus a string (label)'))
 
     # sort observatory list by rho, then theta, then phi
-    # note, axis=0 and kind='heapsort' are important here
     sortIdx = p.lexsort(p.vstack((obs_phi,obs_theta,obs_rho)))
     obs_phi = obs_phi[sortIdx]
     obs_theta = obs_theta[sortIdx]
@@ -369,51 +368,78 @@ def extractQuantities(path='./', run='',
 
     # create vector of MIX time steps
     timeRange = dMIX.getTimeRange()
-
-
-    # create LFM data objec
-    dLFM = pyLTR.Models.LFM(path, run)
-
-    # make sure necessary variables are defined in the model
-    modelVars = dLFM.getVarNames()
-    for v in ['X_grid', 'Y_grid', 'Z_grid',
-              'bx_', 'by_', 'bz_']:
-        assert( v in modelVars )
-
-    # create vector of LFM time steps
-    trLFM = dLFM.getTimeRange()
-
-    # check that LFM timeRanges are the same as MIX timeRanges
-    # _roundTime() rounds to nearest minute by default, which should suffice here
-    # NOTE: we do NOT change the time stamps at all, just make sure they match
-    #       to a 1-minute tolerance; MIX time steps will be used for all output
-    if list(map(_roundTime, timeRange)) != list(map(_roundTime, trLFM)):
-       raise Exception(('Mismatched MIX and LFM output files'))
-
-
+    
     # basic sanity check(s) before proceeding
     if len(timeRange) == 0:
-        raise Exception(('No data files found.  Are you pointing to the correct run directory?'))
+        raise Exception(('No MIX data files found.',
+                         'Are you pointing to the correct run directory?'))
 
-
-    # filter unwanted time steps
+    # get indices to first and last desired time steps
     index0 = 0
     if t0:
         for i,t in enumerate(timeRange):
             if t0 >= t:
                 index0 = i
-
-    #index1 = len(timeRange)-1
-    index1 = len(timeRange) # we were skipping the last valid time step
+    index1 = len(timeRange)
     if t1:
         for i,t in enumerate(timeRange):
             if t1 >= t:
-                #index1 = i
-                index1 = i + 1 # we were skipping the last valid time step
+                index1 = i + 1 
+    print(( 'Extracting quantities for %d time steps.' % (index1-index0) ))
 
 
-    print(( 'Extracting LFM and MIX quantities for time series over %d time steps.' % (index1-index0) ))
 
+
+
+    # attempt to create corresponding TIEGCM data object; 
+    # continue with warning if failure
+    try:
+        dTIEGCM = pyLTR.Models.TIEGCM(path, run)
+
+        # make sure necessary variables are defined in the model
+        modelVars = dTIEGCM.getVarNames()
+        for v in ['KQLAM', 'KQPHI','mlat', 'mlon']:
+            assert( v in modelVars )
+
+        # create vector of TIEGCM time steps
+        trTIEGCM = list(map(_roundTime, dTIEGCM.getTimeRange()))
+        
+        # check that there is a single corresponding TIEGCM time step for each
+        # MIX time step (to a 1-second tolerance)
+        for dt in timeRange[index0:index1]:
+            assert(len([val for val in trTIEGCM if val == dt]) is 1)
+        
+    except:
+        print("No or incompatible TIEGCM output found; continuing anyway...")
+        dTIEGCM = None
+    
+    
+    
+    
+    # attempt to create corresponding LFM data object;
+    # continue with warning if failure
+    try:
+        dLFM = pyLTR.Models.LFM(path, run)
+
+        # make sure necessary variables are defined in the model
+        modelVars = dLFM.getVarNames()
+        for v in ['X_grid', 'Y_grid', 'Z_grid',
+                  'bx_', 'by_', 'bz_']:
+            assert( v in modelVars )
+
+        # create vector of LFM time steps, rounded to nearest second
+        # (only use these to check for correspondence with MIX time steps)
+        trLFM = list(map(_roundTime, dLFM.getTimeRange()))
+           
+        # check that there is a single corresponding LFM time step for each
+        # MIX time step (to a 1-second tolerance)
+        for dt in timeRange[index0:index1]:
+            assert(len([val for val in trLFM if val == dt]) is 1)
+
+    except:
+        print("No or incompatible LFM output found; continuing anyway...")
+        dLFM = None    
+    
 
     # Output a status bar displaying how far along the computation is.
     try:
@@ -448,7 +474,7 @@ def extractQuantities(path='./', run='',
     dBDown_mag = []
 
 
-    # Pre-compute fixed coordinates for northern hemisphere
+    # Pre-compute static sun-fixed coordinates for northern hemisphere
     xN = dMIX.read('Grid X', timeRange[index0])
     yN = dMIX.read('Grid Y', timeRange[index0])
     thetaN = p.arctan2(yN,xN)
@@ -459,8 +485,7 @@ def extractQuantities(path='./', run='',
     longNdict = {'data':thetaN,'name':r'\phi','units':r'rad'}
     colatNdict = {'data':n.arcsin(rN),'name':r'\theta','units':r'rad'}
 
-
-    # Pre-compute fixed coordinates for southern hemisphere
+    # Pre-compute static sun-fixed coordinates for southern hemisphere
     xS = xN
     yS = -yN
     thetaS = p.arctan2(yS,xS)
@@ -472,18 +497,35 @@ def extractQuantities(path='./', run='',
     colatSdict = {'data':p.pi-n.arcsin(rS),'name':r'\theta','units':r'rad'}
 
 
-    # Pre-compute fixed coordinates for magnetosphere
-    xM = dLFM.read('X_grid', trLFM[index0]) # this is in cm
-    yM = dLFM.read('Y_grid', trLFM[index0]) # this is in cm
-    zM = dLFM.read('Z_grid', trLFM[index0]) # this is in cm
-    hgrid=pyLTR.Grids.HexahedralGrid(xM,yM,zM)
-    xBM,yBM,zBM=hgrid.cellCenters()
-    hgridcc=pyLTR.Grids.HexahedralGrid(xBM,yBM,zBM) # B is at cell centers
-    xJM,yJM,zJM = hgridcc.cellCenters() # ...and J is at the centers of these cells
-    xJM = xJM/100 # ...and the coordinates should be in meters for BS.py
-    yJM = yJM/100 # ...and the coordinates should be in meters for BS.py
-    zJM = zJM/100 # ...and the coordinates should be in meters for BS.py
-    dVM = hgridcc.cellVolume()/(100**3) # ...and we need dV in m^3 for BS.py
+
+
+    if dTIEGCM:
+        # TIEGCM coordinates are magnetic latitude and longitude. They will need
+        # to be tranformed into sun-fixed SM coordinates below, but at the least,
+        # we can extract them once here. Convert to colatitude and polar angles,
+        # from degrees into radians, and turn into meshgrids for later use
+        theta_TIE_mag, phi_TIE_mag = p.meshgrid(
+            (90 - dTIEGCM.read('mlat', timeRange[index0])) * p.pi/180.,
+            dTIEGCM.read('mlon', timeRange[index0]) * p.pi/180.)
+
+
+    
+    
+    if dLFM:
+        # Pre-compute static sun-fixed coordinates for magnetosphere
+        xM = dLFM.read('X_grid', timeRange[index0]) # this is in cm
+        yM = dLFM.read('Y_grid', timeRange[index0]) # this is in cm
+        zM = dLFM.read('Z_grid', timeRange[index0]) # this is in cm
+        hgrid=pyLTR.Grids.HexahedralGrid(xM,yM,zM)
+        xBM,yBM,zBM=hgrid.cellCenters()
+        hgridcc=pyLTR.Grids.HexahedralGrid(xBM,yBM,zBM) # B is at cell centers
+        xJM,yJM,zJM = hgridcc.cellCenters() # ...and J is at the centers of these cells
+        xJM = xJM/100 # ...and the coordinates should be in meters for BS.py
+        yJM = yJM/100 # ...and the coordinates should be in meters for BS.py
+        zJM = zJM/100 # ...and the coordinates should be in meters for BS.py
+        dVM = hgridcc.cellVolume()/(100**3) # ...and we need dV in m^3 for BS.py
+
+
 
 
     # Prepare to initiate main loop
@@ -671,7 +713,7 @@ def extractQuantities(path='./', run='',
                        xS_dict, yS_dict, psiS_dict, ri=6500e3, oh=True)
 
 
-              # compute total, Pedersen, and Hall current vectors
+              # compute total, Pedersen, and Hall ionospheric current vectors
               ((JphiN_dict,JthetaN_dict),
                (JpedphiN_dict,JpedthetaN_dict),
                (JhallphiN_dict,JhallthetaN_dict)) = pyLTR.Physics.MIXCalcs.jphithetaDict(
@@ -681,159 +723,258 @@ def extractQuantities(path='./', run='',
                (JpedphiS_dict,JpedthetaS_dict),
                (JhallphiS_dict,JhallthetaS_dict)) = pyLTR.Physics.MIXCalcs.jphithetaDict(
                           (ephiS_dict,ethetaS_dict), sigmapS_dict, sigmahS_dict, colatSdict['data'])
+              
+              
+              
+              
+              # Calculate DALECS current segments
+              if dMIX:
+              
+                  # start by generating min/max bounds of ionosphere segments
+
+                  # Northern hemisphere
+                  phiN = phiN_dict['data']
+                  thetaN = thetaN_dict['data']
+                  rionN_min, rionN_max = pyLTR.Physics.DALECS._edgeGrid((phiN,thetaN))
+                  rionN_min.append(p.zeros(phiN.shape)+6500e3)
+                  rionN_max.append(p.zeros(phiN.shape)+p.Inf)
+
+                  # Southern hemisphere
+                  phiS = phiS_dict['data']
+                  thetaS = thetaS_dict['data']
+                  rionS_min, rionS_max = pyLTR.Physics.DALECS._edgeGrid((phiS,thetaS))
+                  rionS_min.append(p.zeros(phiS.shape)+6500e3)
+                  rionS_max.append(p.zeros(phiS.shape)+p.Inf)
 
 
-              #
-              # Calculate current segments
-              #
+                  # next, generate DALECS for Northern ionospheric currents only
+                  (rvN_ion,
+                   JvN_ion,
+                   dvN_ion) = pyLTR.Physics.DALECS_v2.dalecs_sphere([rionN_min[0],rionN_min[1],rionN_min[2]],
+                                                               [rionN_max[0],rionN_max[1],rionN_min[2]],
+                                                               (JphiN_dict['data']/1e6,
+                                                                JthetaN_dict['data']/1e6),
+                                                               10, False)
 
-              # start by generating min/max bounds of ionosphere segments
+                  # next, generate DALECS for Northern hemisphere inside LFM inner boundary
+                  (rvN_IBin,
+                   JvN_IBin,
+                   dvN_IBin) = pyLTR.Physics.DALECS_v2.dalecs_sphere([rionN_min[0],rionN_min[1],rionN_min[2]],
+                                                               [rionN_max[0],rionN_max[1],2.5*rionN_min[2]],
+                                                               (JphiN_dict['data']/1e6,
+                                                                JthetaN_dict['data']/1e6),
+                                                               10, False)
 
-              # Northern hemisphere
-              phiN = phiN_dict['data']
-              thetaN = thetaN_dict['data']
-              rionN_min, rionN_max = pyLTR.Physics.DALECS._edgeGrid((phiN,thetaN))
-              rionN_min.append(p.zeros(phiN.shape)+6500e3)
-              rionN_max.append(p.zeros(phiN.shape)+p.Inf)
+                  # do NOT attempt to generate DALECS for FACs alone...this isn't possible
+                  # with existing code; However, the deltaB from FACs is the difference
+                  # between deltaBs calculated from the two DALECS above
 
-              # Southern hemisphere
-              phiS = phiS_dict['data']
-              thetaS = thetaS_dict['data']
-              rionS_min, rionS_max = pyLTR.Physics.DALECS._edgeGrid((phiS,thetaS))
-              rionS_min.append(p.zeros(phiS.shape)+6500e3)
-              rionS_max.append(p.zeros(phiS.shape)+p.Inf)
+                  """
+                  # generate DALECS for Northern Hemisphere outside LFM inner boundary
+                  # (this is serving as a proxy for magnetosphere currents for now)
+                  (rvN_mag,
+                   JvN_mag,
+                   dvN_mag) = pyLTR.Physics.DALECS.dalecs_sphere([rionN_min[0],rionN_min[1],2.5*rionN_min[2]],
+                                                              [rionN_max[0],rionN_max[1],rionN_min[2]],
+                                                              (JphiN_dict['data']/1e6,
+                                                               JthetaN_dict['data']/1e6),
+                                                              10, False)
+                  """
 
+                  # next, generate DALECS for Southern ionospheric currents only
+                  (rvS_ion,
+                   JvS_ion,
+                   dvS_ion) = pyLTR.Physics.DALECS_v2.dalecs_sphere([rionS_min[0],rionS_min[1],rionS_min[2]],
+                                                              [rionS_max[0],rionS_max[1],rionS_min[2]],
+                                                              (JphiS_dict['data']/1e6,
+                                                               JthetaS_dict['data']/1e6),
+                                                              10, False)
 
-              # next, generate DALECS for Northern ionospheric currents only
-              (rvN_ion,
-               JvN_ion,
-               dvN_ion) = pyLTR.Physics.DALECS.dalecs_sphere([rionN_min[0],rionN_min[1],rionN_min[2]],
-                                                           [rionN_max[0],rionN_max[1],rionN_min[2]],
-                                                           (JphiN_dict['data']/1e6,
-                                                            JthetaN_dict['data']/1e6),
-                                                           10, False)
+                  # next, generate DALECS for Southern hemisphere inside LFM inner boundary
+                  (rvS_IBin,
+                   JvS_IBin,
+                   dvS_IBin) = pyLTR.Physics.DALECS_v2.dalecs_sphere([rionS_min[0],rionS_min[1],rionS_min[2]],
+                                                               [rionS_max[0],rionS_max[1],2.5*rionS_min[2]],
+                                                               (JphiS_dict['data']/1e6,
+                                                                JthetaS_dict['data']/1e6),
+                                                               10, False)
 
-              # next, generate DALECS for Northern hemisphere inside LFM inner boundary
-              (rvN_IBin,
-               JvN_IBin,
-               dvN_IBin) = pyLTR.Physics.DALECS.dalecs_sphere([rionN_min[0],rionN_min[1],rionN_min[2]],
-                                                           [rionN_max[0],rionN_max[1],2.5*rionN_min[2]],
-                                                           (JphiN_dict['data']/1e6,
-                                                            JthetaN_dict['data']/1e6),
-                                                           10, False)
+                  # do NOT attempt to generate DALECS for FACs alone...this isn't possible
+                  # with existing code; However, the deltaB from FACs is the difference
+                  # between deltaBs calculated from the two DALECS above
 
-              # do NOT attempt to generate DALECS for FACs alone...this isn't possible
-              # with existing code; However, the deltaB from FACs is the difference
-              # between deltaBs calculated from the two DALECS above
+                  """
+                  # generate DALECS for Southern Hemisphere outside LFM inner boundary
+                  # (this is serving as a proxy for magnetosphere currents for now)
+                  (rvS_mag,
+                   JvS_mag,
+                   dvS_mag) = pyLTR.Physics.DALECS.dalecs_sphere([rionS_min[0],rionS_min[1],2.5*rionS_min[2]],
+                                                              [rionS_max[0],rionS_max[1],rionS_min[2]],
+                                                              (JphiS_dict['data']/1e6,
+                                                               JthetaS_dict['data']/1e6),
+                                                              10, False)
+                  """
 
-              """
-              # generate DALECS for Northern Hemisphere outside LFM inner boundary
-              # (this is serving as a proxy for magnetosphere currents for now)
-              (rvN_mag,
-               JvN_mag,
-               dvN_mag) = pyLTR.Physics.DALECS.dalecs_sphere([rionN_min[0],rionN_min[1],2.5*rionN_min[2]],
-                                                          [rionN_max[0],rionN_max[1],rionN_min[2]],
-                                                          (JphiN_dict['data']/1e6,
-                                                           JthetaN_dict['data']/1e6),
-                                                          10, False)
-              """
+                  #
+                  # Calculate deltaBs
+                  #
 
-
-              # next, generate DALECS for Southern ionospheric currents only
-              (rvS_ion,
-               JvS_ion,
-               dvS_ion) = pyLTR.Physics.DALECS.dalecs_sphere([rionS_min[0],rionS_min[1],rionS_min[2]],
-                                                          [rionS_max[0],rionS_max[1],rionS_min[2]],
-                                                          (JphiS_dict['data']/1e6,
-                                                           JthetaS_dict['data']/1e6),
-                                                          10, False)
-
-              # next, generate DALECS for Southern hemisphere inside LFM inner boundary
-              (rvS_IBin,
-               JvS_IBin,
-               dvS_IBin) = pyLTR.Physics.DALECS.dalecs_sphere([rionS_min[0],rionS_min[1],rionS_min[2]],
-                                                           [rionS_max[0],rionS_max[1],2.5*rionS_min[2]],
-                                                           (JphiS_dict['data']/1e6,
-                                                            JthetaS_dict['data']/1e6),
-                                                           10, False)
-
-              # do NOT attempt to generate DALECS for FACs alone...this isn't possible
-              # with existing code; However, the deltaB from FACs is the difference
-              # between deltaBs calculated from the two DALECS above
-
-              """
-              # generate DALECS for Southern Hemisphere outside LFM inner boundary
-              # (this is serving as a proxy for magnetosphere currents for now)
-              (rvS_mag,
-               JvS_mag,
-               dvS_mag) = pyLTR.Physics.DALECS.dalecs_sphere([rionS_min[0],rionS_min[1],2.5*rionS_min[2]],
-                                                          [rionS_max[0],rionS_max[1],rionS_min[2]],
-                                                          (JphiS_dict['data']/1e6,
-                                                           JthetaS_dict['data']/1e6),
-                                                          10, False)
-              """
-
-              # finally, generate magnetospheric currents from LFM file
-              BxM=dLFM.read('bx_', trLFM[index0:index1][i]) # this is in G
-              ByM=dLFM.read('by_', trLFM[index0:index1][i]) # this is in G
-              BzM=dLFM.read('bz_', trLFM[index0:index1][i]) # this is in G
-              JxM,JyM,JzM = pyLTR.Physics.LFMCurrent(hgridcc,BxM,ByM,BzM,rion=1) # ...should be A/m^2 given default input units
+                  # deltaB for ionospheric currents
+                  (dBphiN_ion,
+                   dBthetaN_ion,
+                   dBrhoN_ion) = pyLTR.Physics.BS.bs_sphere(rvN_ion,
+                                                           JvN_ion,
+                                                           dvN_ion,
+                                                           (obs_phi,obs_theta,obs_rho))
+                  # deltaB for currents inside IB
+                  (dBphiN_IBin,
+                   dBthetaN_IBin,
+                   dBrhoN_IBin) = pyLTR.Physics.BS.bs_sphere(rvN_IBin,
+                                                            JvN_IBin,
+                                                            dvN_IBin,
+                                                            (obs_phi,obs_theta,obs_rho))
+                  # difference between dB*_IBin and dB*_ion is the FAC inside IB
+                  dBphiN_fac = dBphiN_IBin - dBphiN_ion
+                  dBthetaN_fac = dBthetaN_IBin - dBthetaN_ion
+                  dBrhoN_fac = dBrhoN_IBin - dBrhoN_ion
 
 
+                  # deltaB for Southern ionospheric currents
+                  (dBphiS_ion,
+                   dBthetaS_ion,
+                   dBrhoS_ion) = pyLTR.Physics.BS.bs_sphere(rvS_ion,
+                                                           JvS_ion,
+                                                           dvS_ion,
+                                                           (obs_phi,obs_theta,obs_rho))
+                  # deltaB for Southern DALECS currents inside IB
+                  (dBphiS_IBin,
+                   dBthetaS_IBin,
+                   dBrhoS_IBin) = pyLTR.Physics.BS.bs_sphere(rvS_IBin,
+                                                            JvS_IBin,
+                                                            dvS_IBin,
+                                                            (obs_phi,obs_theta,obs_rho))
+                  # difference between dB*_IBin and dB*_ion is the FAC inside IB
+                  dBphiS_fac = dBphiS_IBin - dBphiS_ion
+                  dBthetaS_fac = dBthetaS_IBin - dBthetaS_ion
+                  dBrhoS_fac = dBrhoS_IBin - dBrhoS_ion
+              else:
 
-              #
-              # Calculate deltaBs
-              #
+                  # set dBs to zero if no MIX data is available
+                  dBphiN_ion = p.zeros(p.array(obs_phi).shape)
+                  dBthetaN_ion = p.zeros(p.array(obs_theta).shape)
+                  dBrhoN_ion = p.zeros(p.array(obs_rho).shape)
+                  dBphiN_fac = p.zeros(p.array(obs_phi).shape)
+                  dBthetaN_fac = p.zeros(p.array(obs_theta).shape)
+                  dBrhoN_fac = p.zeros(p.array(obs_rho).shape)
 
-              # deltaB for ionospheric currents
-              (dBphiN_ion,
-               dBthetaN_ion,
-               dBrhoN_ion) = pyLTR.Physics.BS.bs_sphere(rvN_ion,
-                                                       JvN_ion,
-                                                       dvN_ion,
-                                                       (obs_phi,obs_theta,obs_rho))
-              # deltaB for currents inside IB
-              (dBphiN_IBin,
-               dBthetaN_IBin,
-               dBrhoN_IBin) = pyLTR.Physics.BS.bs_sphere(rvN_IBin,
-                                                        JvN_IBin,
-                                                        dvN_IBin,
-                                                        (obs_phi,obs_theta,obs_rho))
-              # difference between dB*_IBin and dB*_ion is the FAC inside IB
-              dBphiN_fac = dBphiN_IBin - dBphiN_ion
-              dBthetaN_fac = dBthetaN_IBin - dBthetaN_ion
-              dBrhoN_fac = dBrhoN_IBin - dBrhoN_ion
-
-
-              # deltaB for Southern ionospheric currents
-              (dBphiS_ion,
-               dBthetaS_ion,
-               dBrhoS_ion) = pyLTR.Physics.BS.bs_sphere(rvS_ion,
-                                                       JvS_ion,
-                                                       dvS_ion,
-                                                       (obs_phi,obs_theta,obs_rho))
-              # deltaB for Southern DALECS currents inside IB
-              (dBphiS_IBin,
-               dBthetaS_IBin,
-               dBrhoS_IBin) = pyLTR.Physics.BS.bs_sphere(rvS_IBin,
-                                                        JvS_IBin,
-                                                        dvS_IBin,
-                                                        (obs_phi,obs_theta,obs_rho))
-              # difference between dB*_IBin and dB*_ion is the FAC inside IB
-              dBphiS_fac = dBphiS_IBin - dBphiS_ion
-              dBthetaS_fac = dBthetaS_IBin - dBthetaS_ion
-              dBrhoS_fac = dBrhoS_IBin - dBrhoS_ion
+                  dBphiS_ion = p.zeros(p.array(obs_phi).shape)
+                  dBthetaS_ion = p.zeros(p.array(obs_theta).shape)
+                  dBrhoS_ion = p.zeros(p.array(obs_rho).shape)
+                  dBphiS_fac = p.zeros(p.array(obs_phi).shape)
+                  dBthetaS_fac = p.zeros(p.array(obs_theta).shape)
+                  dBrhoS_fac = p.zeros(p.array(obs_rho).shape)
 
 
-              # deltaB from magnetospheric currents
-              # convert cartesian positions and vectors to spherical
-              phiM,thetaM,rhoM,JphiM,JthetaM,JrhoM=pyLTR.transform.CARtoSPH(xJM,yJM,zJM,JxM,JyM,JzM)
-              (dBphi_mag,
-               dBtheta_mag,
-               dBrho_mag) = pyLTR.Physics.BS.bs_sphere((phiM,thetaM,rhoM),
-                                                       (JphiM,JthetaM,JrhoM),
-                                                       dVM,
-                                                       (obs_phi,obs_theta,obs_rho))
+
+              #if dTIEGCM:
+              if False:
+                  # retrieve TIEGCM height-integrated currents:convert to SM 
+                  # coordinates, set thetas that overlap with MIX to zero, 
+                  # generate DALECS, calculate deltaB
+                  x, y, z, dx, dy, dz = pyLTR.transform.SPHtoCAR(
+                    phi_TIE_mag,
+                    theta_TIE_mag,
+                    6500e3,
+                    dTIEGCM.read('KQPHI', time).T,
+                    -dTIEGCM.read('KQLAM', time).T,
+                    0.0 )
+                                      
+                  x, y, z = pyLTR.transform.MAGtoSM(x, y, z, time)
+                  dx, dy, dz = pyLTR.transform.MAGtoSM(dx, dy, dz, time)
+                  
+                  (phi_TIE_sm, theta_TIE_sm, rho_TIE_sm,
+                   Jphi_TIE_sm, Jtheta_TIE_sm, Jrho_TIE_sm) = pyLTR.transform.CARtoSPH(
+                    x, y, z, dx, dy, dz)
+
+
+                  # FIXME: we really need to detect minimum MIX thetas, and
+                  #        maybe even blend MIX and TIEGCM currents smoothly 
+                  #        across this boundary
+                  print("Discarding ", 
+                    (theta_TIE_sm < (60 * p.pi/180.)).sum() +
+                    (theta_TIE_sm > (120 * p.pi/180.)).sum(),
+                    " of ", theta_TIE_sm.size,
+                    "TIEGCM points outside +/- 30 degrees lat.")
+                  Jphi_TIE_sm[theta_TIE_sm < (60 * p.pi/180.)] = 0
+                  Jphi_TIE_sm[theta_TIE_sm > (120 * p.pi/180.)] = 0
+                  Jtheta_TIE_sm[theta_TIE_sm < (60 * p.pi/180.)] = 0
+                  Jtheta_TIE_sm[theta_TIE_sm > (120 * p.pi/180.)] = 0
+                  
+
+                  rionTIE_min, rionTIE_max = pyLTR.Physics.DALECS._edgeGrid((phi_TIE_sm, theta_TIE_sm))
+                  rionTIE_min.append(p.zeros(rho_TIE_sm.shape) + 6500e3)
+                  rionTIE_max.append(p.zeros(rho_TIE_sm.shape) + p.Inf)
+                  
+                  # ionospheric currents only
+                  (rvTIE_ion,
+                   JvTIE_ion,
+                   dvTIE_ion) = pyLTR.Physics.DALECS.dalecs_sphere(
+                    [rionTIE_min[0], rionTIE_min[1], rionTIE_min[2]],
+                    [rionTIE_max[0], rionTIE_max[1], rionTIE_min[2]],
+                    (Jphi_TIE_sm, Jtheta_TIE_sm),
+                    10, False)
+                  
+                  
+                  # deltaB for ionospheric currents
+                  (dBphiTIE_ion,
+                   dBthetaTIE_ion,
+                   dBrhoTIE_ion) = pyLTR.Physics.BS.bs_sphere(
+                    rvTIE_ion,
+                    JvTIE_ion,
+                    dvTIE_ion,
+                    (obs_phi, obs_theta, obs_rho))
+                                      
+              else:
+                  
+                  # set dBs to zero if no TIEGCM data is available
+                  dBphiTIE_ion = p.zeros(p.array(obs_phi).shape)
+                  dBthetaTIE_ion = p.zeros(p.array(obs_theta).shape)
+                  dBrhoTIE_ion = p.zeros(p.array(obs_rho).shape)
+
+
+
+              if dLFM:
+                  
+                  # finally, retrieve magnetospheric currents from LFM file,
+                  # convert to spherical coordinates, and calculate deltaB
+                  BxM = dLFM.read('bx_', trLFM[index0:index1][i]) # this is in G
+                  ByM = dLFM.read('by_', trLFM[index0:index1][i]) # this is in G
+                  BzM = dLFM.read('bz_', trLFM[index0:index1][i]) # this is in G
+                  JxM, JyM, JzM = pyLTR.Physics.LFMCurrent(
+                    hgridcc, BxM, ByM, BzM, rion=1) # ...should be A/m^2 given default input units
+
+                  (phiM, thetaM, rhoM,
+                   JphiM, JthetaM, JrhoM) = pyLTR.transform.CARtoSPH(
+                    xJM, yJM, zJM, JxM, JyM, JzM)
+                  
+                  (dBphi_mag,
+                   dBtheta_mag,
+                   dBrho_mag) = pyLTR.Physics.BS.bs_sphere(
+                    (phiM,thetaM,rhoM),
+                    (JphiM,JthetaM,JrhoM),
+                    dVM,
+                    (obs_phi,obs_theta,obs_rho))
+                    
+              else:
+                  
+                  # set dBs to zero if no LFM data is available
+                  dBphi_mag = p.zeros(p.array(obs_phi).shape)
+                  dBtheta_mag = p.zeros(p.array(obs_theta).shape)
+                  dBrho_mag = p.zeros(p.array(obs_rho).shape)
+                  
+
+
+
 
 
               if geoGrid:
@@ -872,6 +1013,17 @@ def extractQuantities(path='./', run='',
                  _, _, _, dBphiS_fac, dBthetaS_fac, dBrhoS_fac = pyLTR.transform.CARtoSPH(x,y,z,dx,dy,dz)
 
 
+                     
+                 # rotate TIEGCM ionospheric contribution from SM to GEO coordinates;
+                 # leave position vectors unchanged for subsequent rotations
+                 x,y,z,dx,dy,dz = pyLTR.transform.SPHtoCAR(obs_phi, obs_theta, obs_rho,
+                                                           dBphiTIE_ion, dBthetaTIE_ion, dBrhoTIE_ion)
+                 x,y,z = pyLTR.transform.SMtoGEO(x,y,z,time)
+                 dx,dy,dz = pyLTR.transform.SMtoGEO(dx,dy,dz,time)
+                 _, _, _, dBphiTIE_ion, dBthetaTIE_ion, dBrhoTIE_ion = pyLTR.transform.CARtoSPH(x,y,z,dx,dy,dz)
+                                        
+
+
                  # rotate magnetospheric contribution from SM to GEO coordinates; leave
                  # position vectors unchanged for subsequent rotations
                  x,y,z,dx,dy,dz = pyLTR.transform.SPHtoCAR(obs_phi, obs_theta, obs_rho,
@@ -879,9 +1031,10 @@ def extractQuantities(path='./', run='',
                  x,y,z = pyLTR.transform.SMtoGEO(x,y,z,time)
                  dx,dy,dz = pyLTR.transform.SMtoGEO(dx,dy,dz,time)
                  _, _, _, dBphi_mag, dBtheta_mag, dBrho_mag = pyLTR.transform.CARtoSPH(x,y,z,dx,dy,dz)
+                    
 
-
-              # combine n/s dBs into lists of dicts, then dump to binary file
+              
+              # combine dBs into lists of dicts, then dump to binary file
               toPickle = {}
 
               toPickle['pov'] = 'north'
@@ -897,9 +1050,9 @@ def extractQuantities(path='./', run='',
                                        {'data':obs_theta,'name':r'$\theta$','units':r'rad'},
                                        {'data':obs_rho,'name':r'$\rho$','units':r'm'}]
 
-              dB_ion = [{'data': (dBphiN_ion + dBphiS_ion)*1e9,'units':'nT' ,'name':r'$\Delta \marthrm{B}_{\phi}$'},
-                        {'data': (dBthetaN_ion + dBthetaS_ion)*1e9,'units':'nT' ,'name':r'$\Delta \marthrm{B}_{\theta}$'},
-                        {'data': (dBrhoN_ion + dBrhoS_ion)*1e9,'units':'nT' ,'name':r'$\Delta \marthrm{B}_{\rho}$'}]
+              dB_ion = [{'data': (dBphiN_ion + dBphiS_ion + dBphiTIE_ion)*1e9,'units':'nT' ,'name':r'$\Delta \marthrm{B}_{\phi}$'},
+                        {'data': (dBthetaN_ion + dBthetaS_ion + dBthetaTIE_ion)*1e9,'units':'nT' ,'name':r'$\Delta \marthrm{B}_{\theta}$'},
+                        {'data': (dBrhoN_ion + dBrhoS_ion + dBrhoTIE_ion)*1e9,'units':'nT' ,'name':r'$\Delta \marthrm{B}_{\rho}$'}]
               dB_fac = [{'data': (dBphiN_fac + dBphiS_fac)*1e9,'units':'nT' ,'name':r'$\Delta \marthrm{B}_{\phi}$'},
                         {'data': (dBthetaN_fac + dBthetaS_fac)*1e9,'units':'nT' ,'name':r'$\Delta \marthrm{B}_{\theta}$'},
                         {'data': (dBrhoN_fac + dBrhoS_fac)*1e9,'units':'nT' ,'name':r'$\Delta \marthrm{B}_{\rho}$'}]
