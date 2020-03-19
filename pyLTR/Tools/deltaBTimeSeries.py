@@ -475,7 +475,7 @@ def extractQuantities(path='./', run='',
     # in the ionosphere. Then it is merely a question of scaling these by
     # the ionospheric currents read in at each time step.
     #
-    DALECS = pyLTR.Physics.DALECS_v2
+    DALECS = pyLTR.Physics.DALECS
     
     if dMIX:
       # Pre-compute MIX coordinates and DALECS for northern hemisphere
