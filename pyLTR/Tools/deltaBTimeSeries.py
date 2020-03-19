@@ -876,8 +876,8 @@ def extractQuantities(path='./', run='',
 
 
 
-              #if dTIEGCM:
-              if False:
+              if dTIEGCM:
+              #if False:
                   # retrieve TIEGCM height-integrated currents:convert to SM 
                   # coordinates, set thetas that overlap with MIX to zero, 
                   # generate DALECS, calculate deltaB
@@ -943,6 +943,7 @@ def extractQuantities(path='./', run='',
 
 
 
+              #if False:
               if dLFM:
                   
                   # finally, retrieve magnetospheric currents from LFM file,

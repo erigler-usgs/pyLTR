@@ -15,9 +15,21 @@ class dalecs(object):
                   (default=10)
   isI           : True if currents are expected (not densities)
                   (default=False)
+  iono          : True generates ionospheric segment
+                  (default=True)
+  fac           : True generates field-aligned current segment
+                  (default=True)
+  equator       : True generates equatorial segment
+                  (default=True)
   """
-  def __init__(self, ion_phi_theta, ion_rho=6500e3, ndip=10, isI=False):
+  def __init__(self, ion_phi_theta, ion_rho=6500e3, ndip=10, isI=False,
+               iono=True, fac=True, equator=True):
     
+    # for now, DALECS must be defined in spherical coordinates, although once
+    # defined, they can be converted to Cartesian and back again; the grid will
+    # only be regular in dipole coordinates.
+    self.coords = "spherical"
+
     # ion_phi and ion_theta are grids of longitude-like and colatitude-like
     # coordinates; they should be compatible with numpy's meshgrid()
     self.ion_phi = ion_phi_theta[0]
@@ -41,24 +53,63 @@ class dalecs(object):
 
     # generate full type1 and type2 current loops
     print('Initializing type1 Bostrom loops')
-    (self.rvecs_type1, 
-     self.Jvecs_type1, 
-     self.dvecs_type1) = dalecs_sphere(rion_min, rion_max,
-                                       (np.ones(self.ion_phi.shape),
-                                        np.zeros(self.ion_theta.shape)),
-                                       n=self.ndip,
-                                       isI=self.isI,
-                                       type2=False)
+    (self._rvecs_type1_iono, 
+     self._Jvecs_type1_iono, 
+     self._dvecs_type1_iono) = dalecs_sphere(
+       rion_min, rion_max,
+       (np.ones(self.ion_phi.shape),
+        np.zeros(self.ion_theta.shape)),
+       n=self.ndip, isI=self.isI, type2=False,
+       iono=(True & iono), fac=False, equator=False
+    )
+    (self._rvecs_type1_fac, 
+     self._Jvecs_type1_fac, 
+     self._dvecs_type1_fac) = dalecs_sphere(
+       rion_min, rion_max,
+       (np.ones(self.ion_phi.shape),
+        np.zeros(self.ion_theta.shape)),
+       n=self.ndip, isI=self.isI, type2=False,
+       iono=False, fac=(True & fac), equator=False
+    )
+    (self._rvecs_type1_equator, 
+     self._Jvecs_type1_equator, 
+     self._dvecs_type1_equator) = dalecs_sphere(
+       rion_min, rion_max,
+       (np.ones(self.ion_phi.shape),
+        np.zeros(self.ion_theta.shape)),
+       n=self.ndip, isI=self.isI, type2=False,
+       iono=False, fac=False, equator=(True & equator)
+    )
+
     print('Initializing type2 Bostrom loops')
-    (self.rvecs_type2, 
-     self.Jvecs_type2, 
-     self.dvecs_type2) = dalecs_sphere(rion_min, rion_max,
-                                       (np.zeros(self.ion_phi.shape),
-                                        np.ones(self.ion_theta.shape)),
-                                       n=self.ndip,
-                                       isI=self.isI,
-                                       type1=False)    
-    
+    (self._rvecs_type2_iono, 
+     self._Jvecs_type2_iono, 
+     self._dvecs_type2_iono) = dalecs_sphere(
+       rion_min, rion_max,
+       (np.zeros(self.ion_phi.shape),
+        np.ones(self.ion_theta.shape)),
+       n=self.ndip, isI=self.isI, type1=False,
+       iono=(True & iono), fac=False, equator=False
+    )    
+    (self._rvecs_type2_fac, 
+     self._Jvecs_type2_fac, 
+     self._dvecs_type2_fac) = dalecs_sphere(
+       rion_min, rion_max,
+       (np.zeros(self.ion_phi.shape),
+        np.ones(self.ion_theta.shape)),
+       n=self.ndip, isI=self.isI, type1=False,
+       iono=False, fac=(True & fac), equator=False
+    )    
+    (self._rvecs_type2_equator, 
+     self._Jvecs_type2_equator, 
+     self._dvecs_type2_equator) = dalecs_sphere(
+       rion_min, rion_max,
+       (np.zeros(self.ion_phi.shape),
+        np.ones(self.ion_theta.shape)),
+       n=self.ndip, isI=self.isI, type1=False,
+       iono=False, fac=False, equator=(True & equator)
+    )    
+   
   
   def copy(self):
     """
@@ -76,34 +127,79 @@ class dalecs(object):
            rho_min=None,
            rho_max=None):
     """
-    Return a dalecs object with unwanted phi, theta, or rho ranges removed
+    Return a new dalecs object with unwanted phi, theta, or rho ranges removed
+    FIXME: should we create a trim_cartesian() method?
     """
     out = self.copy()
+
+    if out.coords == "cartesian":
+      # convert to spherical since trim assumes spherical coordinates
+      out.spherical()
+      change_back = True
+    else:
+      change_back = False
     
     # _trim_phi_theta_rho() the copies of rvecs*, Jvecs*, and dvecs*
-    (out.rvecs_type1,
-     out.Jvecs_type1,
-     out.dvecs_type1) = _trim_phi_theta_rho(
-      out.rvecs_type1, out.Jvecs_type1, out.dvecs_type1,
+    (out._rvecs_type1_iono,
+     out._Jvecs_type1_iono,
+     out._dvecs_type1_iono) = _trim_phi_theta_rho(
+      out._rvecs_type1_iono, out._Jvecs_type1_iono, out._dvecs_type1_iono,
       phi_min=phi_min, phi_max=phi_max,
       theta_min=theta_min, theta_max=theta_max,
       rho_min=rho_min, rho_max=rho_max
     )
-    (out.rvecs_type2,
-     out.Jvecs_type2,
-     out.dvecs_type2) = _trim_phi_theta_rho(
-      out.rvecs_type2, out.Jvecs_type2, out.dvecs_type2,
+    (out._rvecs_type1_fac,
+     out._Jvecs_type1_fac,
+     out._dvecs_type1_fac) = _trim_phi_theta_rho(
+      out._rvecs_type1_fac, out._Jvecs_type1_fac, out._dvecs_type1_fac,
+      phi_min=phi_min, phi_max=phi_max,
+      theta_min=theta_min, theta_max=theta_max,
+      rho_min=rho_min, rho_max=rho_max
+    )
+    (out._rvecs_type1_equator,
+     out._Jvecs_type1_equator,
+     out._dvecs_type1_equator) = _trim_phi_theta_rho(
+      out._rvecs_type1_equator, out._Jvecs_type1_equator, out._dvecs_type1_equator,
+      phi_min=phi_min, phi_max=phi_max,
+      theta_min=theta_min, theta_max=theta_max,
+      rho_min=rho_min, rho_max=rho_max
+    )
+
+    (out._rvecs_type2_iono,
+     out._Jvecs_type2_iono,
+     out._dvecs_type2_iono) = _trim_phi_theta_rho(
+      out._rvecs_type2_iono, out._Jvecs_type2_iono, out._dvecs_type2_iono,
+      phi_min=phi_min, phi_max=phi_max,
+      theta_min=theta_min, theta_max=theta_max,
+      rho_min=rho_min, rho_max=rho_max
+    )
+    (out._rvecs_type2_fac,
+     out._Jvecs_type2_fac,
+     out._dvecs_type2_fac) = _trim_phi_theta_rho(
+      out._rvecs_type2_fac, out._Jvecs_type2_fac, out._dvecs_type2_fac,
+      phi_min=phi_min, phi_max=phi_max,
+      theta_min=theta_min, theta_max=theta_max,
+      rho_min=rho_min, rho_max=rho_max
+    )
+    (out._rvecs_type2_equator,
+     out._Jvecs_type2_equator,
+     out._dvecs_type2_equator) = _trim_phi_theta_rho(
+      out._rvecs_type2_equator, out._Jvecs_type2_equator, out._dvecs_type2_equator,
       phi_min=phi_min, phi_max=phi_max,
       theta_min=theta_min, theta_max=theta_max,
       rho_min=rho_min, rho_max=rho_max
     )
     
+    if change_back:
+      # change back to Cartesian
+      out.cartesian()
+
     return out
     
     
   def scale(self, Jion):
     """
-    Return a dalecs object with Jvecs scaled by Jion 
+    Return a new dalecs object with Jvecs scaled by Jion 
     """
     out = self.copy()
 
@@ -113,11 +209,25 @@ class dalecs(object):
         np.shape(Jion[1]) != np.shape(self.Jvecs_type2[1])):
       raise Exception('Input Jion dimensions do not match Jvecs')
     else:
-      for i, Jvec in enumerate(out.Jvecs_type1[0].flat):
-        out.Jvecs_type1[0].flat[i] = Jvec * Jion[0].flat[i]
-      for i, Jvec in enumerate(out.Jvecs_type2[1].flat):
-        out.Jvecs_type2[1].flat[i] = Jvec * Jion[1].flat[i]
-    
+      
+      Jvecs1 = [out._Jvecs_type1_iono,
+                out._Jvecs_type1_fac, 
+                out._Jvecs_type1_equator]
+      Jvecs2 = [out._Jvecs_type2_iono,
+                out._Jvecs_type2_fac, 
+                out._Jvecs_type2_equator]
+
+      for Jvecs_type1, Jvecs_type2 in zip(Jvecs1, Jvecs2):
+
+        for i in range(len(Jvecs_type1[0].flat)):
+          Jvecs_type1[0].flat[i] = Jvecs_type1[0].flat[i] * Jion[0].flat[i]
+          Jvecs_type1[1].flat[i] = Jvecs_type1[1].flat[i] * Jion[0].flat[i]
+          Jvecs_type1[2].flat[i] = Jvecs_type1[2].flat[i] * Jion[0].flat[i]
+        for i in range(len(out.Jvecs_type2[1].flat)):
+          Jvecs_type2[0].flat[i] = Jvecs_type2[0].flat[i] * Jion[1].flat[i]
+          Jvecs_type2[1].flat[i] = Jvecs_type2[1].flat[i] * Jion[1].flat[i]
+          Jvecs_type2[2].flat[i] = Jvecs_type2[2].flat[i] * Jion[1].flat[i]
+
     return out
   
   
@@ -145,6 +255,54 @@ class dalecs(object):
   
   
   @property
+  def rvecs_type1(self):
+    """
+    Return component rvecs for Type1 current systems as single object array
+    """
+    phis1, thetas1, rhos1 = self._rvecs_type1_iono
+    phis2, thetas2, rhos2 = self._rvecs_type1_fac
+    phis3, thetas3, rhos3 = self._rvecs_type1_equator
+    
+    phis = np.empty(phis1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(phis1.flat, phis2.flat, phis3.flat)):
+      phis.flat[i] = np.hstack((one, two, three))
+    
+    thetas = np.empty(thetas1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(thetas1.flat, thetas2.flat, thetas3.flat)):
+      thetas.flat[i] = np.hstack((one, two, three))
+      
+    rhos = np.empty(rhos1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(rhos1.flat, rhos2.flat, rhos3.flat)):
+      rhos.flat[i] = np.hstack((one, two, three))
+    
+    return phis, thetas, rhos
+
+  
+  @property
+  def rvecs_type2(self):
+    """
+    Return component rvecs for Type2 current systems as single object array
+    """
+    phis1, thetas1, rhos1 = self._rvecs_type2_iono
+    phis2, thetas2, rhos2 = self._rvecs_type2_fac
+    phis3, thetas3, rhos3 = self._rvecs_type2_equator
+    
+    phis = np.empty(phis1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(phis1.flat, phis2.flat, phis3.flat)):
+      phis.flat[i] = np.hstack((one, two, three))
+    
+    thetas = np.empty(thetas1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(thetas1.flat, thetas2.flat, thetas3.flat)):
+      thetas.flat[i] = np.hstack((one, two, three))
+      
+    rhos = np.empty(rhos1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(rhos1.flat, rhos2.flat, rhos3.flat)):
+      rhos.flat[i] = np.hstack((one, two, three))
+    
+    return phis, thetas, rhos
+
+  
+  @property
   def Jvecs(self):
     """
     Return Jvecs for Type1 and Type2 current systems as single object array
@@ -166,7 +324,55 @@ class dalecs(object):
     
     return Jphis, Jthetas, Jrhos
   
+  
+  @property
+  def Jvecs_type1(self):
+    """
+    Return component Jvecs for Type1 current systems as single object array
+    """
+    Jphis1, Jthetas1, Jrhos1 = self._Jvecs_type1_iono
+    Jphis2, Jthetas2, Jrhos2 = self._Jvecs_type1_fac
+    Jphis3, Jthetas3, Jrhos3 = self._Jvecs_type1_equator
+    
+    Jphis = np.empty(Jphis1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(Jphis1.flat, Jphis2.flat, Jphis3.flat)):
+      Jphis.flat[i] = np.hstack((one, two, three))
+    
+    Jthetas = np.empty(Jthetas1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(Jthetas1.flat, Jthetas2.flat, Jthetas3.flat)):
+      Jthetas.flat[i] = np.hstack((one, two, three))
+      
+    Jrhos = np.empty(Jrhos1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(Jrhos1.flat, Jrhos2.flat, Jrhos3.flat)):
+      Jrhos.flat[i] = np.hstack((one, two, three))
+    
+    return Jphis, Jthetas, Jrhos
 
+  
+  @property
+  def Jvecs_type2(self):
+    """
+    Return component Jvecs for Type2 current systems as single object array
+    """
+    Jphis1, Jthetas1, Jrhos1 = self._Jvecs_type2_iono
+    Jphis2, Jthetas2, Jrhos2 = self._Jvecs_type2_fac
+    Jphis3, Jthetas3, Jrhos3 = self._Jvecs_type2_equator
+    
+    Jphis = np.empty(Jphis1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(Jphis1.flat, Jphis2.flat, Jphis3.flat)):
+      Jphis.flat[i] = np.hstack((one, two, three))
+    
+    Jthetas = np.empty(Jthetas1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(Jthetas1.flat, Jthetas2.flat, Jthetas3.flat)):
+      Jthetas.flat[i] = np.hstack((one, two, three))
+      
+    Jrhos = np.empty(Jrhos1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(Jrhos1.flat, Jrhos2.flat, Jrhos3.flat)):
+      Jrhos.flat[i] = np.hstack((one, two, three))
+    
+    return Jphis, Jthetas, Jrhos
+
+  
   @property
   def dvecs(self):
     """
@@ -178,10 +384,170 @@ class dalecs(object):
     ds = np.empty(ds1.shape, dtype='object')
     for i, (one, two) in enumerate(zip(ds1.flat, ds2.flat)):
       ds.flat[i] = np.hstack((one, two))
-        
+    
     return ds
 
+  @property
+  def dvecs_type1(self):
+    """
+    Return component dvecs for Type1 current systems as single object array
+    """
+    ds1 = self._dvecs_type1_iono
+    ds2 = self._dvecs_type1_fac
+    ds3 = self._dvecs_type1_equator
+
+    ds = np.empty(ds1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(ds1.flat, ds2.flat, ds3.flat)):
+      ds.flat[i] = np.hstack((one, two, three))
     
+    return ds
+
+  @property
+  def dvecs_type2(self):
+    """
+    Return component dvecs for Type2 current systems as single object array
+    """
+    ds1 = self._dvecs_type2_iono
+    ds2 = self._dvecs_type2_fac
+    ds3 = self._dvecs_type2_equator
+
+    ds = np.empty(ds1.shape, dtype='object')
+    for i, (one, two, three) in enumerate(zip(ds1.flat, ds2.flat, ds3.flat)):
+      ds.flat[i] = np.hstack((one, two, three))
+    
+    return ds
+
+  def cartesian(self):
+    """
+    Convert rvecs and Jvecs for all current systems into Cartesian coordinates
+    """
+
+    if self.coords == "cartesian":
+      print("DALECS already in Cartesian coordinates.")
+
+    else:
+      self.coords = "cartesian"
+
+      rvecs1 = [self._rvecs_type1_iono,
+                self._rvecs_type1_fac, 
+                self._rvecs_type1_equator]
+      rvecs2 = [self._rvecs_type2_iono,
+                self._rvecs_type2_fac, 
+                self._rvecs_type2_equator]
+      Jvecs1 = [self._Jvecs_type1_iono,
+                self._Jvecs_type1_fac, 
+                self._Jvecs_type1_equator]
+      Jvecs2 = [self._Jvecs_type2_iono,
+                self._Jvecs_type2_fac, 
+                self._Jvecs_type2_equator]
+
+      for rvecs_type1, rvecs_type2, Jvecs_type1, Jvecs_type2 in zip(
+        rvecs1, rvecs2, Jvecs1, Jvecs2):
+        
+        for i in range(len(rvecs_type1[0].flat)):
+          # convert Jvecs first, since rvecs must still be spherical
+          (Jvecs_type1[0].flat[i],
+           Jvecs_type1[1].flat[i],
+           Jvecs_type1[2].flat[i]) = _sp2cart_dir(
+             (Jvecs_type1[0].flat[i],
+              Jvecs_type1[1].flat[i],
+              Jvecs_type1[2].flat[i]),          
+             (rvecs_type1[0].flat[i],
+              rvecs_type1[1].flat[i],
+              rvecs_type1[2].flat[i])
+          )
+          (Jvecs_type2[0].flat[i],
+           Jvecs_type2[1].flat[i],
+           Jvecs_type2[2].flat[i]) = _sp2cart_dir(
+             (Jvecs_type2[0].flat[i],
+              Jvecs_type2[1].flat[i],
+              Jvecs_type2[2].flat[i]),          
+             (rvecs_type2[0].flat[i],
+              rvecs_type2[1].flat[i],
+              rvecs_type2[2].flat[i])
+          )
+          # now we can convert rvecs
+          (rvecs_type1[0].flat[i],
+           rvecs_type1[1].flat[i],
+           rvecs_type1[2].flat[i]) = _sp2cart_pos(
+             (rvecs_type1[0].flat[i],
+              rvecs_type1[1].flat[i],
+              rvecs_type1[2].flat[i])
+          )
+          (rvecs_type2[0].flat[i],
+           rvecs_type2[1].flat[i],
+           rvecs_type2[2].flat[i]) = _sp2cart_pos(
+             (rvecs_type2[0].flat[i],
+              rvecs_type2[1].flat[i],
+              rvecs_type2[2].flat[i])
+          )
+
+
+  def spherical(self):
+    """
+    Convert rvecs for Type1 and Type2 current systems spherical coordinates
+    """
+    if self.coords == "spherical":
+      print("DALECS already in spherical coordinates.")
+
+    else:
+      self.coords = "spherical"
+      
+      rvecs1 = [self._rvecs_type1_iono,
+                self._rvecs_type1_fac, 
+                self._rvecs_type1_equator]
+      rvecs2 = [self._rvecs_type2_iono,
+                self._rvecs_type2_fac, 
+                self._rvecs_type2_equator]
+      Jvecs1 = [self._Jvecs_type1_iono,
+                self._Jvecs_type1_fac, 
+                self._Jvecs_type1_equator]
+      Jvecs2 = [self._Jvecs_type2_iono,
+                self._Jvecs_type2_fac, 
+                self._Jvecs_type2_equator]
+
+      for rvecs_type1, rvecs_type2, Jvecs_type1, Jvecs_type2 in zip(
+        rvecs1, rvecs2, Jvecs1, Jvecs2):
+        
+        for i in range(len(self.rvecs_type1[0].flat)):
+          # convert Jvecs first, since rvecs must still be Cartesian
+          (Jvecs_type1[0].flat[i],
+           Jvecs_type1[1].flat[i],
+           Jvecs_type1[2].flat[i]) = _cart2sp_dir(
+             (Jvecs_type1[0].flat[i],
+              Jvecs_type1[1].flat[i],
+              Jvecs_type1[2].flat[i]),          
+             (rvecs_type1[0].flat[i],
+              rvecs_type1[1].flat[i],
+              rvecs_type1[2].flat[i])
+          )
+          (Jvecs_type2[0].flat[i],
+           Jvecs_type2[1].flat[i],
+           Jvecs_type2[2].flat[i]) = _cart2sp_dir(
+             (Jvecs_type2[0].flat[i],
+              Jvecs_type2[1].flat[i],
+              Jvecs_type2[2].flat[i]),          
+             (rvecs_type2[0].flat[i],
+              rvecs_type2[1].flat[i],
+              rvecs_type2[2].flat[i])
+          )
+          # now we can convert rvecs
+          (rvecs_type1[0].flat[i],
+           rvecs_type1[1].flat[i],
+           rvecs_type1[2].flat[i]) = _cart2sp_pos(
+             (rvecs_type1[0].flat[i],
+              rvecs_type1[1].flat[i],
+              rvecs_type1[2].flat[i])
+          )
+          (rvecs_type2[0].flat[i],
+           rvecs_type2[1].flat[i],
+           rvecs_type2[2].flat[i]) = _cart2sp_pos(
+             (rvecs_type2[0].flat[i],
+              rvecs_type2[1].flat[i],
+              rvecs_type2[2].flat[i])
+          )
+
+
 
 class ralecs(object):
   """
@@ -201,6 +567,10 @@ class ralecs(object):
   """
   def __init__(self, ion_phi_theta, ion_rho=6500e3, nrad=10, isI=False):
     
+    # for now, RALECS must be defined in spherical coordinates, although once
+    # defined, they can be converted to Cartesian and back again
+    self.coords = "spherical"
+
     # ion_phi and ion_theta are grids of longitude-like and colatitude-like
     # coordinates; they should be compatible with numpy's meshgrid()
     self.ion_phi = ion_phi_theta[0]
@@ -209,7 +579,7 @@ class ralecs(object):
     # ion_radius - ionosphere radius
     self.ion_rho = ion_rho
     
-    # ndip - number of discrete dipole-aligned segments
+    # nrad - number of discrete dipole-aligned segments
     self.nrad = nrad
     
     # is_I - are we working with current (True) or current density (False)
@@ -296,10 +666,14 @@ class ralecs(object):
         np.shape(Jion[1]) != np.shape(self.Jvecs_type2[1])):
       raise Exception('Input Jion dimensions do not match Jvecs')
     else:
-      for i, Jvec in enumerate(out.Jvecs_type1[0].flat):
-        out.Jvecs_type1[0].flat[i] = Jvec * Jion[0].flat[i]
-      for i, Jvec in enumerate(out.Jvecs_type2[1].flat):
-        out.Jvecs_type2[1].flat[i] = Jvec * Jion[1].flat[i]
+      for i in range(len(out.Jvecs_type1[0].flat)):
+        out.Jvecs_type1[0].flat[i] = out.Jvecs_type1[0].flat[i] * Jion[0].flat[i]
+        out.Jvecs_type1[1].flat[i] = out.Jvecs_type1[1].flat[i] * Jion[0].flat[i]
+        out.Jvecs_type1[2].flat[i] = out.Jvecs_type1[2].flat[i] * Jion[0].flat[i]
+      for i in range(len(out.Jvecs_type2[1].flat)):
+        out.Jvecs_type2[0].flat[i] = out.Jvecs_type2[0].flat[i] * Jion[1].flat[i]
+        out.Jvecs_type2[1].flat[i] = out.Jvecs_type2[1].flat[i] * Jion[1].flat[i]
+        out.Jvecs_type2[2].flat[i] = out.Jvecs_type2[2].flat[i] * Jion[1].flat[i]
     
     return out
 
@@ -363,11 +737,109 @@ class ralecs(object):
         
     return ds
 
-        
+
+  def cartesian(self):
+    """
+    Convert rvecs for Type1 and Type2 current systems Cartesian coordinates
+    """
+
+    if self.coords == "cartesian":
+      print("RALECS already in Cartesian coordinates.")
+
+    else:
+      self.coords = "cartesian"
+      for i in range(len(self.rvecs_type1[0])):
+        # convert Jvecs first, since we'll change rvecs
+        (self.Jvecs_type1[0].flat[i],
+         self.Jvecs_type1[1].flat[i],
+         self.Jvecs_type1[2].flat[i]) = _sp2cart_dir(
+           (self.Jvecs_type1[0].flat[i],
+            self.Jvecs_type1[1].flat[i],
+            self.Jvecs_type1[2].flat[i]),          
+           (self.rvecs_type1[0].flat[i],
+            self.rvecs_type1[1].flat[i],
+            self.rvecs_type1[2].flat[i])
+        )
+        (self.Jvecs_type2[0].flat[i],
+         self.Jvecs_type2[1].flat[i],
+         self.Jvecs_type2[2].flat[i]) = _sp2cart_dir(
+           (self.Jvecs_type2[0].flat[i],
+            self.Jvecs_type2[1].flat[i],
+            self.Jvecs_type2[2].flat[i]),          
+           (self.rvecs_type2[0].flat[i],
+            self.rvecs_type2[1].flat[i],
+            self.rvecs_type2[2].flat[i])
+        )
+        # now we can change rvecs
+        (self.rvecs_type1[0].flat[i],
+         self.rvecs_type1[1].flat[i],
+         self.rvecs_type1[2].flat[i]) = _sp2cart_pos(
+           (self.rvecs_type1[0].flat[i],
+            self.rvecs_type1[1].flat[i],
+            self.rvecs_type1[2].flat[i])
+        )
+        (self.rvecs_type2[0].flat[i],
+         self.rvecs_type2[1].flat[i],
+         self.rvecs_type2[2].flat[i]) = _sp2cart_pos(
+           (self.rvecs_type2[0].flat[i],
+            self.rvecs_type2[1].flat[i],
+            self.rvecs_type2[2].flat[i])
+        )
+
+
+  def spherical(self):
+    """
+    Convert rvecs for Type1 and Type2 current systems spherical coordinates
+    """
+    if self.coords == "spherical":
+      print("RALECS already in spherical coordinates.")
+
+    else:
+      self.coords = "spherical"
+      for i in range(len(self.rvecs_type1[0])):
+        # convert Jvecs first, since we'll change rvecs
+        (self.Jvecs_type1[0].flat[i],
+         self.Jvecs_type1[1].flat[i],
+         self.Jvecs_type1[2].flat[i]) = _cart2sp_dir(
+           (self.Jvecs_type1[0].flat[i],
+            self.Jvecs_type1[1].flat[i],
+            self.Jvecs_type1[2].flat[i]),          
+           (self.rvecs_type1[0].flat[i],
+            self.rvecs_type1[1].flat[i],
+            self.rvecs_type1[2].flat[i])
+        )
+        (self.Jvecs_type2[0].flat[i],
+         self.Jvecs_type2[1].flat[i],
+         self.Jvecs_type2[2].flat[i]) = _cart2sp_dir(
+           (self.Jvecs_type2[0].flat[i],
+            self.Jvecs_type2[1].flat[i],
+            self.Jvecs_type2[2].flat[i]),          
+           (self.rvecs_type2[0].flat[i],
+            self.rvecs_type2[1].flat[i],
+            self.rvecs_type2[2].flat[i])
+        )
+        # now we can change rvecs
+        (self.rvecs_type1[0].flat[i],
+         self.rvecs_type1[1].flat[i],
+         self.rvecs_type1[2].flat[i]) = _cart2sp_pos(
+           (self.rvecs_type1[0].flat[i],
+            self.rvecs_type1[1].flat[i],
+            self.rvecs_type1[2].flat[i])
+        )
+        (self.rvecs_type2[0].flat[i],
+         self.rvecs_type2[1].flat[i],
+         self.rvecs_type2[2].flat[i]) = _cart2sp_pos(
+           (self.rvecs_type2[0].flat[i],
+            self.rvecs_type2[1].flat[i],
+            self.rvecs_type2[2].flat[i])
+        )
+
+
+
 
 def dalecs_sphere(rion_min, rion_max, Jion, n=10, isI=False,
-                  type1=True, type2=True):
-
+                  type1=True, type2=True,
+                  iono=True, fac=True, equator=True):
   """
   Build a 3D Dipole-Aligned Loop Equivalent Current System (DALECS) in spherical
   coordinates given ionospheric current (density) on a 2D spherical shell. Each
@@ -405,6 +877,9 @@ def dalecs_sphere(rion_min, rion_max, Jion, n=10, isI=False,
     the same electric current, ensuring zero divergence. Default isI=False.
   - type1 is an optional flag to limit which type Bostrom loops are created
   - type2 is an optional flag to limit which type Bostrom loops are created
+  - iono is an optional flag to enable/disable ionosphere currents
+  - fac is an optional flag to enable/disable field aligned currents
+  - equator is an optional flag to enable/disable equatorial currents
 
   OUTPUTS:
   - rvecs is a 3-tuple/list of NumPy object arrays (phis, thetas, rhos), each
@@ -431,7 +906,7 @@ def dalecs_sphere(rion_min, rion_max, Jion, n=10, isI=False,
     A) rho_min/rho_max usage is admittedly confusing, so here are a few
        use-cases intended to clarify how these inputs should be used:
        1) if rho_min is the ionospheric radius, and rho_max is larger than
-          rho_min, all SSECS current segments outside rho_max will be
+          rho_min, all DALECS current segments outside rho_max will be
           discarded...this is probably the most common use-case;
        2) if rho_min and rho_max are equal, the ionospheric current segments
           (and ONLY ionospheric segments) will always be returned...this is
@@ -440,7 +915,7 @@ def dalecs_sphere(rion_min, rion_max, Jion, n=10, isI=False,
           may be used to obtain the differential lengths/areas/volumes
           (i.e., dvecs) for each ionospheric cell;
        3) if rho_max is the ionospheric radius, and rho_min is larger than
-          rho_max, all SSECS current segments inside rho_min will be
+          rho_max, all DALECS current segments inside rho_min will be
           discarded...this is probably only useful for diagnostic purposes
           (e.g., isolating effects of ionospheric and magnetosperic currents).
 
@@ -601,7 +1076,9 @@ def dalecs_sphere(rion_min, rion_max, Jion, n=10, isI=False,
                                            max(theta_min, theta_max),
                                            min(rho_min, rho_max),
                                            max(rho_min, rho_max),
-                                           Jphi, Jtheta, n, isI)
+                                           Jphi, Jtheta, n, isI,
+                                           iono=iono, fac=fac,
+                                           equator=equator)
     else:
       (phis1, thetas1, rhos1, 
        Jphis1, Jthetas1, Jrhos1,
@@ -617,7 +1094,9 @@ def dalecs_sphere(rion_min, rion_max, Jion, n=10, isI=False,
                                            max(theta_min, theta_max),
                                            min(rho_min, rho_max),
                                            max(rho_min, rho_max),
-                                           Jphi, Jtheta, n, isI)
+                                           Jphi, Jtheta, n, isI,
+                                           iono=iono, fac=fac,
+                                           equator=equator)
     else:
       (phis2, thetas2, rhos2, 
        Jphis2, Jthetas2, Jrhos2,
@@ -671,7 +1150,8 @@ def dalecs_sphere(rion_min, rion_max, Jion, n=10, isI=False,
 
 
 def ralecs_sphere(rion_min, rion_max, Jion, n=10, isI=False,
-                  type1=True, type2=True):
+                  type1=True, type2=True,
+                  iono=True, fac=True, outer=True):
   """
   Construct a 3D Radially Aligned Loop Equivalent Current System (RALECS) in
   spherical coordinates given ionospheric current (density) on a 2D spherical
@@ -715,6 +1195,9 @@ def ralecs_sphere(rion_min, rion_max, Jion, n=10, isI=False,
     the same electric current, ensuring zero divergence. Default isI=False.
   - type1 is an optional flag to limit which type RALEC loops are created
   - type2 is an optional flag to limit which type RALEC loops are created
+  - iono is an optional flag to enable/disable ionosphere currents
+  - fac is an optional flag to enable/disable field aligned currents
+  - outer is an optional flag to enable/disable outer sphere currents
 
 
   OUTPUTS:
@@ -726,7 +1209,7 @@ def ralecs_sphere(rion_min, rion_max, Jion, n=10, isI=False,
      rhos[:]   - vector of rho coordinates of RALEC element centers
   - Jvecs is a 3-tuple/list of NumPy object arrays (Jphis, Jthetas, Jrhos), each
     with the same dimensions as rion_min, with each object holding a 1D array
-    of discrete DALEC element current (density) vector components:
+    of discrete RALEC element current (density) vector components:
      Jphis[:]   - vector of Jphi components of current (density)
      Jthetas[:] - vector of Jtheta coordinates of current (density)
      Jrhos[:]   - vector of Jrho coordinates of current (density)
@@ -881,7 +1364,9 @@ def ralecs_sphere(rion_min, rion_max, Jion, n=10, isI=False,
                                          max(theta_min, theta_max),
                                          min(rho_min, rho_max),
                                          max(rho_min, rho_max),
-                                         Jphi, Jtheta, n, isI)
+                                         Jphi, Jtheta, n, isI,
+                                         iono=iono, fac=fac,
+                                         outer=outer)
     else:
       (phis1, thetas1, rhos1, 
        Jphis1, Jthetas1, Jrhos1,
@@ -897,7 +1382,9 @@ def ralecs_sphere(rion_min, rion_max, Jion, n=10, isI=False,
                                          max(theta_min, theta_max),
                                          min(rho_min, rho_max),
                                          max(rho_min, rho_max),
-                                         Jphi, Jtheta, n, isI)
+                                         Jphi, Jtheta, n, isI,
+                                         iono=iono, fac=fac,
+                                         outer=outer)
     else:
       (phis2, thetas2, rhos2, 
        Jphis2, Jthetas2, Jrhos2,
@@ -1064,16 +1551,13 @@ def _trim_phi_theta_rho(rvecs, Jvecs, dvecs,
                                      dtype=type(phi_min)) &
                     np.less_equal(rvecs[0].flat[i], phi_max, 
                                   dtype=type(phi_max)))
-#        good_phi = ((rvecs[0].flat[i] >= phi_min) &
-#                    (rvecs[0].flat[i] <= phi_max))
+
       else:
         # if max<min, return all outside of min-max range
         good_phi = (np.greater_equal(rvecs[0].flat[i], phi_min, 
                                      dtype=type(phi_min)) |
                     np.less_equal(rvecs[0].flat[i], phi_max, 
                                   dtype=type(phi_max)))
-#        good_phi = ((rvecs[0].flat[i] >= phi_min) |
-#                    (rvecs[0].flat[i] <= phi_max))
       
       if theta_min <= theta_max:
         # if min<=max, return all between min and max
@@ -1081,16 +1565,13 @@ def _trim_phi_theta_rho(rvecs, Jvecs, dvecs,
                                        dtype=type(theta_min)) &
                       np.less_equal(rvecs[1].flat[i], theta_max,
                                     dtype=type(theta_max)))
-#        good_theta = ((rvecs[1].flat[i] >= theta_min) &
-#                      (rvecs[1].flat[i] <= theta_max))
+
       else:
         # if max<min, return all outside of min-max range
         good_theta = (np.greater_equal(rvecs[1].flat[i], theta_min,
                                        dtype=type(theta_min)) |
                       np.less_equal(rvecs[1].flat[i], theta_max,
                                     dtype=type(theta_max)))
-#        good_theta = ((rvecs[1].flat[i] >= theta_min) |
-#                      (rvecs[1].flat[i] <= theta_max))
       
       if rho_min <= rho_max:
         # if min<=max, return all between min and max
@@ -1098,16 +1579,13 @@ def _trim_phi_theta_rho(rvecs, Jvecs, dvecs,
                                      dtype=type(rho_min)) &
                     np.less_equal(rvecs[2].flat[i], rho_max,
                                   dtype=type(rho_max)))
-#        good_rho = ((rvecs[2].flat[i] >= rho_min) &
-#                    (rvecs[2].flat[i] <= rho_max))
       else:
         # if max<min, return all outside of min-max range
         good_rho = (np.greater_equal(rvecs[2].flat[i], rho_min,
                                      dtype=type(rho_min)) |
                     np.less_equal(rvecs[2].flat[i], rho_max,
                                   dtype=type(rho_max)))
-#        good_rho = ((rvecs[2].flat[i] >= rho_min) |
-#                    (rvecs[2].flat[i] <= rho_max))
+
       
       good = good_phi & good_theta & good_rho
       
@@ -1129,7 +1607,8 @@ def _bostromType1(phi_min, phi_max,
                   theta_min, theta_max,
                   rho_min, rho_max,
                   Jphi, Jtheta,
-                  n, isI):
+                  n, isI,
+                  iono=True, fac=True, equator=True):
   """
   Discretize a Type 1 Bostrom current loop, and return results in 1D arrays.
   """
@@ -1143,6 +1622,8 @@ def _bostromType1(phi_min, phi_max,
 
   if rho_min == rho_max:
     # bypass any dipole coordinate stuff if it's going to be trimmed later
+    # NOTE: this should not be necessary with the iono, fac, and equator
+    #       keywords, but retaining to avoid breaking backward compatibility
     phis = np.atleast_1d((phi_min + phi_max) / 2.)
     thetas = np.atleast_1d((theta_min + theta_max) / 2.)
     rhos = np.atleast_1d(rho_min)
@@ -1158,46 +1639,51 @@ def _bostromType1(phi_min, phi_max,
   else:
     
     # initialize arrays to hold data for discrete Bostrom loop elements
-    qs = np.zeros(2*n+2)
-    ps = np.zeros(2*n+2)
-    phis = np.zeros(2*n+2)
-    dl_perp = np.zeros(2*n+2)
-    dl_para = np.zeros(2*n+2)
-    Iqs = np.zeros(2*n+2)
-    Ips = np.zeros(2*n+2)
-    Iphis = np.zeros(2*n+2)
+    qs = np.zeros(2*n+2) * np.nan
+    ps = np.zeros(2*n+2) * np.nan
+    phis = np.zeros(2*n+2) * np.nan
+    rhos = np.zeros(2*n+2) * np.nan
+    thetas = np.zeros(2*n+2) * np.nan
+    dl_perp = np.zeros(2*n+2) * np.nan
+    dl_para = np.zeros(2*n+2) * np.nan
+    Iqs = np.zeros(2*n+2) * np.nan
+    Ips = np.zeros(2*n+2) * np.nan
+    Iphis = np.zeros(2*n+2) * np.nan
 
     #
     # First, generate position vectors for centers of current (density) elements
     #
 
     # ionospheric element
-    qs[0] = np.cos((theta_max+theta_min)/2.) / rho_min**2.
-    ps[0] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
-    phis[0] = (phi_max+phi_min)/2.
+    if iono:
+      qs[0] = np.cos((theta_max+theta_min)/2.) / rho_min**2.
+      ps[0] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
+      phis[0] = (phi_max+phi_min)/2.
 
     # equatorial element
-    qs[1*n+1] = 0
-    ps[1*n+1] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
-    phis[1*n+1] = (phi_max+phi_min)/2.
+    if equator:
+     qs[1*n+1] = 0
+     ps[1*n+1] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
+     phis[1*n+1] = (phi_max+phi_min)/2.
 
-    # E FAC elements
-    q_avg = np.cos((theta_min + theta_max) / 2.) / rho_min**2.
-    qs[0*n+1:1*n+1] = (np.linspace(q_avg, 0, n+1)[:-1] +
-                       np.linspace(q_avg, 0, n+1)[1:]) / 2.
-    ps[0*n+1:1*n+1] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
-    phis[0*n+1:1*n+1] = phi_max
+    if fac:
+      # E FAC elements
+      q_avg = np.cos((theta_min + theta_max) / 2.) / rho_min**2.
+      qs[0*n+1:1*n+1] = (np.linspace(q_avg, 0, n+1)[:-1] +
+                         np.linspace(q_avg, 0, n+1)[1:]) / 2.
+      ps[0*n+1:1*n+1] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
+      phis[0*n+1:1*n+1] = phi_max
 
-    # W FAC elements
-    q_avg = np.cos((theta_min + theta_max) / 2.) / rho_min**2.
-    qs[1*n+2:2*n+2] = (np.linspace(0, q_avg, n+1)[:-1] +
-                       np.linspace(0, q_avg, n+1)[1:]) / 2.
-    ps[1*n+2:2*n+2] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
-    phis[1*n+2:2*n+2] = phi_min
+      # W FAC elements
+      q_avg = np.cos((theta_min + theta_max) / 2.) / rho_min**2.
+      qs[1*n+2:2*n+2] = (np.linspace(0, q_avg, n+1)[:-1] +
+                         np.linspace(0, q_avg, n+1)[1:]) / 2.
+      ps[1*n+2:2*n+2] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
+      phis[1*n+2:2*n+2] = phi_min
 
     # convert qs and ps to rhos and thetas...phis remain unchanged
-    (rhos, thetas) = _dp2sp_pos(qs, ps)
-    rhos[0] = rho_min # ensures that the exact ionosphere radius is returned
+    remove = np.isnan(qs)
+    (rhos[~remove], thetas[~remove]) = _dp2sp_pos(qs[~remove], ps[~remove])
 
 
     #
@@ -1213,24 +1699,28 @@ def _bostromType1(phi_min, phi_max,
 
     else:
 
-      # ionospheric element
-      dl_perp[0] = rho_min * (theta_max-theta_min)
+      if iono:
+        # ionospheric element
+        dl_perp[0] = rho_min * (theta_max-theta_min)
 
-      # equatorial element
       dp = rho_min / np.sin(theta_min)**2 - rho_min / np.sin(theta_max)**2.
-      dl_perp[1*n+1] = (dp * np.sin(thetas[1*n+1])**3. /
-                        np.sqrt(1. + 3.*np.cos(thetas[1*n+1])**2.) )
+      
+      if equator:
+        # equatorial element
+        dl_perp[1*n+1] = (dp * np.sin(thetas[1*n+1])**3. /
+                          np.sqrt(1. + 3.*np.cos(thetas[1*n+1])**2.) )
 
-      # E FAC elements
-      dl_perp[0*n+1:1*n+1] = (dp * np.sin(thetas[0*n+1:1*n+1])**3. /
-                              np.sqrt(1. + 3.*np.cos(thetas[0*n+1:1*n+1])**2.) )
+      if fac:
+        # E FAC elements
+        dl_perp[0*n+1:1*n+1] = (dp * np.sin(thetas[0*n+1:1*n+1])**3. /
+                                np.sqrt(1. + 3.*np.cos(thetas[0*n+1:1*n+1])**2.) )
 
-      # W FAC elements
-      dl_perp[1*n+2:2*n+2] = (dp * np.sin(thetas[1*n+2:2*n+2])**3. /
-                              np.sqrt(1. + 3.*np.cos(thetas[1*n+2:2*n+2])**2.) )
+        # W FAC elements
+        dl_perp[1*n+2:2*n+2] = (dp * np.sin(thetas[1*n+2:2*n+2])**3. /
+                                np.sqrt(1. + 3.*np.cos(thetas[1*n+2:2*n+2])**2.) )
 
 
-    # for now, just set all Inf values to NaN, adn treat as missing data in
+    # for now, just set all Inf values to NaN, and treat as missing data in
     # any subsequent processing
     dl_perp[np.isinf(dl_perp)] = np.nan
 
@@ -1244,21 +1734,24 @@ def _bostromType1(phi_min, phi_max,
     dphi = (phi_max-phi_min)
     dtheta=(theta_max-theta_min)
 
-    # ionospheric element
-    dl_para[0] = rho_min * np.sin((theta_max+theta_min)/2.) * dphi
+    if iono:
+      # ionospheric element
+      dl_para[0] = rho_min * np.sin((theta_max+theta_min)/2.) * dphi
 
-    # equatorial element
-    dl_para[1*n+1] = dphi * rhos[1*n+1]  * np.sin(thetas[1*n+1])
+    if equator:
+      # equatorial element
+      dl_para[1*n+1] = dphi * rhos[1*n+1]  * np.sin(thetas[1*n+1])
 
-    # E FAC elements
-    dqE = qs[1] - qs[2]
-    dl_para[0*n+1:1*n+1] = (dqE * rhos[0*n+1:1*n+1]**3. /
-                            np.sqrt(1. + 3.*np.cos(thetas[0*n+1:1*n+1])**2.) )
+    if fac:
+      # E FAC elements
+      dqE = qs[1] - qs[2]
+      dl_para[0*n+1:1*n+1] = (dqE * rhos[0*n+1:1*n+1]**3. /
+                              np.sqrt(1. + 3.*np.cos(thetas[0*n+1:1*n+1])**2.) )
 
-    # W FAC elements
-    dqW = qs[1*n+3] - qs[1*n+2]
-    dl_para[1*n+2:2*n+2] = (dqW * rhos[1*n+2:2*n+2]**3. /
-                            np.sqrt(1. + 3.*np.cos(thetas[1*n+2:2*n+2])**2.) )
+      # W FAC elements
+      dqW = qs[1*n+3] - qs[1*n+2]
+      dl_para[1*n+2:2*n+2] = (dqW * rhos[1*n+2:2*n+2]**3. /
+                              np.sqrt(1. + 3.*np.cos(thetas[1*n+2:2*n+2])**2.) )
 
 
     # For now, just set all Inf values to NaN, and treat as missing data in
@@ -1292,21 +1785,36 @@ def _bostromType1(phi_min, phi_max,
     # E FAC elements
     Iqs[0*n+1:1*n+1] = -Iphi
     Ips[0*n+1:1*n+1] = 0
-    Iphis[0*n+1:1*n] = 0
+    Iphis[0*n+1:1*n+1] = 0
 
     # W FAC elements
     Iqs[1*n+2:2*n+2] = Iphi
     Ips[1*n+2:2*n+2] = 0
     Iphis[1*n+2:2*n+2] = 0
 
+    #
+    # Next, remove NaNs (but not the ones that were Infs)
+    #
+    phis = phis[~remove]
+    thetas = thetas[~remove]
+    rhos = rhos[~remove]
+    Iqs = Iqs[~remove]
+    Ips = Ips[~remove]
+    Iphis = Iphis[~remove]
+    dl_para = dl_para[~remove]
+    dl_perp = dl_perp[~remove]
 
     #
     # Next, convert currents in dipole coordinates to currents in spherical
     #
     (Irhos, Ithetas) = _dp2sp_dir(Iqs, Ips, thetas)
-    Irhos[0] = 0  # ensures exactly zero radial current at ionosphere cell center
-    Iphis[0] = Iphi # ensures exactly Iphi current at ionosphere cell center
-
+    
+    # some ionosphere outputs should be exact
+    if iono:
+      rhos[0] = rho_min # ensures that the exact ionosphere radius is returned
+      Iphis[0] = Iphi # ensures exactly Iphi at ionosphere cell center
+      Ithetas[0] = 0 # ensures exactly zero Itheta at ionosphere cell center
+      Irhos[0] = 0  # ensures exactly zero Irho at ionosphere cell center
 
     #
     # Finally, divide current vectors by dl_perp to create current densities
@@ -1315,15 +1823,22 @@ def _bostromType1(phi_min, phi_max,
     Jthetas = Ithetas / dl_perp
     Jphis = Iphis / dl_perp
 
-
-  return (phis, thetas, rhos, Jphis, Jthetas, Jrhos, dl_para, dl_perp)
+  # rhos less than rho_min should not be possible in this function, but they
+  # do arise due to finite numerical precision and lots of trigonometry; they
+  # are always just barely less than rho_min, so we will force them to rho_min
+  rhos[rhos < rho_min] = rho_min
+  
+  return (phis, thetas, rhos, 
+          Jphis, Jthetas, Jrhos,
+          dl_para, dl_perp)
 
 
 def _bostromType2(phi_min, phi_max,
                   theta_min, theta_max,
                   rho_min, rho_max,
                   Jphi, Jtheta,
-                  n, isI):
+                  n, isI,
+                  iono=True, fac=True, equator=True):
   """
   Discretize a Type 2 Bostrom current loop, and return results in 1D arrays.
   """
@@ -1337,6 +1852,8 @@ def _bostromType2(phi_min, phi_max,
 
   if rho_min == rho_max:
     # bypass any dipole coordinate stuff if it's going to be trimmed later
+    # NOTE: this should not be necessary with the iono, fac, and equator
+    #       keywords, but retaining to avoid breaking backward compatibility
     phis = np.atleast_1d((phi_min + phi_max) / 2.)
     thetas = np.atleast_1d((theta_min + theta_max) / 2.)
     rhos = np.atleast_1d(rho_min)
@@ -1352,55 +1869,62 @@ def _bostromType2(phi_min, phi_max,
   else:
 
     # initialize arrays to hold data for discrete Bostrom loop elements
-    qs = np.zeros(2*n+2)
-    ps = np.zeros(2*n+2)
-    phis = np.zeros(2*n+2)
-    dl_perp = np.zeros(2*n+2)
-    dl_para = np.zeros(2*n+2)
-    Iqs = np.zeros(2*n+2)
-    Ips = np.zeros(2*n+2)
-    Iphis = np.zeros(2*n+2)
+    qs = np.zeros(2*n+2) * np.nan
+    ps = np.zeros(2*n+2) * np.nan
+    phis = np.zeros(2*n+2) * np.nan
+    rhos = np.zeros(2*n+2) * np.nan
+    thetas = np.zeros(2*n+2) * np.nan
+    dl_perp = np.zeros(2*n+2) * np.nan
+    dl_para = np.zeros(2*n+2) * np.nan
+    Iqs = np.zeros(2*n+2) * np.nan
+    Ips = np.zeros(2*n+2) * np.nan
+    Iphis = np.zeros(2*n+2) * np.nan
 
     #
     # First, generate position vectors for centers of current (density) elements
     #
+
     # ionospheric element
-    qs[0] = np.cos((theta_max+theta_min)/2.) / rho_min**2.
-    ps[0] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
-    phis[0] = (phi_max+phi_min)/2.
+    if iono:
+      qs[0] = np.cos((theta_max+theta_min)/2.) / rho_min**2.
+      ps[0] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
+      phis[0] = (phi_max+phi_min)/2.
 
     # equatorial element
-    qs[1*n+1] = 0
-    ps[1*n+1] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
-    phis[1*n+1] = (phi_max+phi_min)/2.
+    if equator:
+      qs[1*n+1] = 0
+      ps[1*n+1] = rho_min / np.sin((theta_max+theta_min)/2.)**2.
+      phis[1*n+1] = (phi_max+phi_min)/2.
 
-    # S FAC elements
-    q_max = np.cos(theta_max) / rho_min**2.
-    qs[0*n+1:1*n+1] = (np.linspace(q_max, 0, n+1)[:-1] +
-                       np.linspace(q_max, 0, n+1)[1:]) / 2.
+    if fac:
+      # S FAC elements
+      q_max = np.cos(theta_max) / rho_min**2.
+      qs[0*n+1:1*n+1] = (np.linspace(q_max, 0, n+1)[:-1] +
+                         np.linspace(q_max, 0, n+1)[1:]) / 2.
 
-    ps [0*n+1:1*n+1] = rho_min / np.sin(theta_max)**2.
-    phis [0*n+1:1*n+1] = (phi_max+phi_min)/2.
+      ps [0*n+1:1*n+1] = rho_min / np.sin(theta_max)**2.
+      phis [0*n+1:1*n+1] = (phi_max+phi_min)/2.
 
-    # N FAC elements
-    q_min = np.cos(theta_min) / rho_min**2.
-    qs[1*n+2:2*n+2] = (np.linspace(0, q_min, n+1)[:-1] +
-                       np.linspace(0, q_min, n+1)[1:]) / 2.
+      # N FAC elements
+      q_min = np.cos(theta_min) / rho_min**2.
+      qs[1*n+2:2*n+2] = (np.linspace(0, q_min, n+1)[:-1] +
+                         np.linspace(0, q_min, n+1)[1:]) / 2.
 
-    ps[1*n+2:2*n+2] = rho_min / np.sin(theta_min)**2.
-    phis[1*n+2:2*n+2] = (phi_max+phi_min)/2.
+      ps[1*n+2:2*n+2] = rho_min / np.sin(theta_min)**2.
+      phis[1*n+2:2*n+2] = (phi_max+phi_min)/2.
 
 
 
     # convert qs and ps to rhos and thetas...phis remain unchanged
-    (rhos, thetas) = _dp2sp_pos(qs, ps)
-    rhos[0] = rho_min # ensures that the exact ionosphere radius is returned
+    remove = np.isnan(qs)
+    (rhos[~remove], thetas[~remove]) = _dp2sp_pos(qs[~remove], ps[~remove])
 
 
     #
     # Next, calculate pathlengths perpendicular to current density element at
-    # elements' positions;
-  #
+    # elements' positions; this is the cross-section that defines the current
+    # *sheet* density
+    #
 
     if isI:
 
@@ -1411,17 +1935,20 @@ def _bostromType2(phi_min, phi_max,
 
       dphi = (phi_max-phi_min)
 
-      # ionospheric element
-      dl_perp[0] = rho_min * np.sin((theta_max+theta_min)/2.) * dphi
+      if iono:
+        # ionospheric element
+        dl_perp[0] = rho_min * np.sin((theta_max+theta_min)/2.) * dphi
 
-      # equatorial element
-      dl_perp[1*n+1] = dphi * rhos[1*n+1] * np.sin(thetas[1*n+1])
+      if equator:
+        # equatorial element
+        dl_perp[1*n+1] = dphi * rhos[1*n+1] * np.sin(thetas[1*n+1])
 
-      # S FAC elements
-      dl_perp[0*n+1:1*n+1] = dphi * rhos[0*n+1:1*n+1] * np.sin(thetas[0*n+1:1*n+1])
+      if fac:
+        # S FAC elements
+        dl_perp[0*n+1:1*n+1] = dphi * rhos[0*n+1:1*n+1] * np.sin(thetas[0*n+1:1*n+1])
 
-      # N FAC elements
-      dl_perp[1*n+2:2*n+2] = dphi * rhos[1*n+2:2*n+2] * np.sin(thetas[1*n+2:2*n+2])
+        # N FAC elements
+        dl_perp[1*n+2:2*n+2] = dphi * rhos[1*n+2:2*n+2] * np.sin(thetas[1*n+2:2*n+2])
 
 
     # for now, just set all Inf values to NaN, adn treat as missing data in
@@ -1438,23 +1965,27 @@ def _bostromType2(phi_min, phi_max,
     dphi = (phi_max-phi_min)
     dtheta=(theta_max-theta_min)
 
-    # ionospheric element
-    dl_para[0] = rho_min * dtheta
-
-    # equatorial element
+    if iono:
+      # ionospheric element
+      dl_para[0] = rho_min * dtheta
+    
     dp = rho_min / np.sin(theta_min)**2 - rho_min / np.sin(theta_max)**2.
-    dl_para[1*n+1] = (dp * np.sin(thetas[1*n+1])**3. /
-                      np.sqrt(1. + 3.*np.cos(thetas[1*n+1])**2.) )
 
-    # S FAC elements
-    dqS = qs[0*n+1] - qs[0*n+2]
-    dl_para[0*n+1:1*n+1] = (dqS * rhos[0*n+1:1*n+1]**3. /
-                            np.sqrt(1. + 3.*np.cos(thetas[0*n+1:1*n+1])**2.) )
+    if equator:
+      # equatorial element
+      dl_para[1*n+1] = (dp * np.sin(thetas[1*n+1])**3. /
+                        np.sqrt(1. + 3.*np.cos(thetas[1*n+1])**2.) )
 
-    # N FAC elements
-    dqN = qs[1*n+3] - qs[1*n+2]
-    dl_para[1*n+2:2*n+2] = (dqN * rhos[1*n+2:2*n+2]**3. /
-                            np.sqrt(1. + 3.*np.cos(thetas[1*n+2:2*n+2])**2.) )
+    if fac:
+      # S FAC elements
+      dqS = qs[0*n+1] - qs[0*n+2]
+      dl_para[0*n+1:1*n+1] = (dqS * rhos[0*n+1:1*n+1]**3. /
+                              np.sqrt(1. + 3.*np.cos(thetas[0*n+1:1*n+1])**2.) )
+
+      # N FAC elements
+      dqN = qs[1*n+3] - qs[1*n+2]
+      dl_para[1*n+2:2*n+2] = (dqN * rhos[1*n+2:2*n+2]**3. /
+                              np.sqrt(1. + 3.*np.cos(thetas[1*n+2:2*n+2])**2.) )
 
 
     # For now, just set all Inf values to NaN, and treat as missing data in
@@ -1504,15 +2035,29 @@ def _bostromType2(phi_min, phi_max,
     Ips[1*n+2:2*n+2] = 0
     Iphis[1*n+2:2*n+2] = 0
 
+    #
+    # Next, remove NaNs (but not the ones that were Infs)
+    #
+    phis = phis[~remove]
+    thetas = thetas[~remove]
+    rhos = rhos[~remove]
+    Iqs = Iqs[~remove]
+    Ips = Ips[~remove]
+    Iphis = Iphis[~remove]
+    dl_para = dl_para[~remove]
+    dl_perp = dl_perp[~remove]
 
     #
     # Next, convert currents in dipole coordinates to currents in spherical
     #
     (Irhos, Ithetas) = _dp2sp_dir(Iqs, Ips, thetas)
-    Irhos[0] = 0  # ensures exactly zero radial current at ionosphere cell center
-    Ithetas[0] = Itheta # ensures exactly Itheta current at ionosphere cell center
-
-
+    
+    # some ionosphere outputs should be exact
+    if iono:
+      rhos[0] = rho_min # ensures that the exact ionosphere radius is returned
+      Iphis[0] = 0 # ensures that exactly zero Iphi at ionosphere cell center
+      Ithetas[0] = Itheta # ensures exactly Itheta current at ionosphere cell center
+      Irhos[0] = 0  # ensures exactly zero radial current at ionosphere cell center
 
     #
     # Finally, divide current vectors by dl_perp to create current densities
@@ -1520,9 +2065,15 @@ def _bostromType2(phi_min, phi_max,
     Jrhos = Irhos / dl_perp
     Jthetas = Ithetas / dl_perp
     Jphis = Iphis / dl_perp
+    
+  # rhos less than rho_min should not be possible in this function, but they
+  # do arise due to finite numerical precision and lots of trigonometry; they
+  # are always just barely less than rho_min, so we will force them to rho_min
+  rhos[rhos < rho_min] = rho_min
 
-
-  return (phis, thetas, rhos, Jphis, Jthetas, Jrhos, dl_para, dl_perp)
+  return (phis, thetas, rhos, 
+          Jphis, Jthetas, Jrhos,
+          dl_para, dl_perp)
 
 
 
@@ -1822,6 +2373,597 @@ def _ralecType2(phi_min, phi_max,
 
 
 
+def bs_cart(rvecs, Jvecs, dvecs, observs):
+   """
+   Calculate magnetic perturbation in local Cartesian coordinates, caused by
+   currents measured in their own local Cartesian coordinates, using the well-
+   known Biot-Savart relationship.
+
+
+   Inputs
+     - rvecs is 3-tuple/list of position vector components, or arrays of position
+       vector components, or arrays of objects that reference position vector
+       components of current element center(s):
+        xs    - x position vector component(s)
+        ys    - y position vector component(s)
+        zs    - z position vector component(s)
+     - Jvecs is 3-tuple/list of current (density) components, or arrays of
+       current (density) components, or arrays of objects that reference current
+       (density) components at positions specified via rvecs:
+        Jxs   - x current (density) component(s)
+        Jys   - y current (density) component(s)
+        Jzs   - z current (density) component(s)
+     - dvecs is a differential length/area/volume, or array of differential
+       lengths/areas/volumes, or array of objects that reference differential
+       lengths/areas/volumes, depending on if Jvecs describes line currents (A),
+       current sheet densities (A/m), or current volume densities (A/m/m)
+     - observs is 3-tuple/list or same-shaped ND array of observatory location(s):
+        obs_xs   - x components of observatory location(s)
+        obs_ys   - y components of observatory location(s)
+        obs_zs   - z components of observatory location(s)
+
+   Outputs
+     - deltaB is 3-tuple/list or same-shaped ND array of magnetic perturbation(s):
+        dBxs  - x components of deltaB at locations specified in observ
+        dBys  - y components of deltaB at locations specified in observ
+        dBzs  - z components of deltaB at locations specified in observ
+   """
+
+   """
+   NOTES:
+   This function was originally intended only to validate bs_sphere() (e.g., do
+   a Biot-Savart integration in Cartesian coordinates, then transform the output
+   into spherical coordinates to be compared with output from bs_sphere()). It
+   turns out it is significantly more efficient in Python to convert spherical
+   coordinates into Cartesian, run this function, and convert the outputs back
+   into spherical coordinates. So, we choose to discard the approach inspired
+   by Kisabeth and Rostoker (1977), and simply make bs_sphere() a wrapper for
+   this function. Someday it may be worth looking into this more closely, since
+   our original expectation was that the K&R approach would be more efficient.
+   -EJR 10/2013
+
+
+   REFERENCES:
+   Kisabeth & Rostoker (1977), "Modelling of three-dimensional current systems
+     associated with magnetospheric substorms",
+  """
+
+   # start by converting all expected list-like inputs into lists;
+   # this simplifies input checking, and allows users to pass multi-component
+   # inputs as lists, tuples, or even arrays-of-objects
+   rvecs = list(rvecs)
+   Jvecs = list(Jvecs)
+   observs = list(observs)
+
+
+   # check first required input parameter
+   if not(len(rvecs) == 3):
+      raise Exception('1st input must contain 3 items')
+   elif all([np.isscalar(rvecs[i]) for i in range(3)]):
+      # convert scalars to 0-rank arrays
+      rvecs[0] = np.array(rvecs[0])
+      rvecs[1] = np.array(rvecs[1])
+      rvecs[2] = np.array(rvecs[2])
+   elif not(all([type(rvecs[i]) is np.ndarray for i in range(3)])):
+      raise Exception('1st input must hold all scalars or all ndarrays')
+   elif not(rvecs[0].shape == rvecs[1].shape and
+            rvecs[0].shape == rvecs[2].shape):
+      raise Exception('1st input arrays must all have same shape')
+
+   if all([rvecs[i].dtype == object for i in range(3)]):
+      # if here, all input arrays are object arrays
+      if not(all([rvecs[i].flat[j].ndim == 1 for i in range(3) for j in range(rvecs[i].size) ])):
+         raise Exception('1st input object array elements must be 1D')
+   elif not(all([rvecs[i].dtype != object for i in range(3)])):
+      raise Exception('1st input must contain all contiguous or all object arrays')
+
+
+   # check second required input parameter
+   if not(len(Jvecs) == 3):
+      raise Exception('1st input must contain 3 items')
+   elif all([np.isscalar(Jvecs[i]) for i in range(3)]):
+      # convert scalars to 0-rank arrays
+      Jvecs[0] = np.array(Jvecs[0])
+      Jvecs[1] = np.array(Jvecs[1])
+      Jvecs[2] = np.array(Jvecs[2])
+   elif not(all([type(Jvecs[i]) is np.ndarray for i in range(3)])):
+      raise Exception('2nd input must hold all scalars or all ndarrays')
+   elif not(Jvecs[0].shape == Jvecs[1].shape and
+            Jvecs[0].shape == Jvecs[2].shape):
+      raise Exception('2nd input arrays must all have same shape')
+
+   if all([Jvecs[i].dtype == object for i in range(3)]):
+      # if here, all input arrays are object arrays
+      if not(all([Jvecs[i].flat[j].ndim == 1
+                  for i in range(3) for j in range(Jvecs[i].size) ])):
+         raise Exception('2nd input object array elements must be 1D')
+   elif not(all([Jvecs[i].dtype != object for i in range(3)])):
+      raise Exception('2nd input must contain all contiguous or all object arrays')
+
+
+   # check third required input parameter
+   if np.isscalar(dvecs):
+      # convert scalar to 0-rank array
+      dvecs = np.array(dvecs)
+   elif not(type(dvecs) is np.ndarray):
+      raise Exception('3rd input must be a scalar or ndarray')
+
+   if dvecs.dtype == object:
+      if not(all([dvecs.flat[j].ndim == 1 for j in range(dvecs.size)])):
+         raise Exception('3rd input object array elemetns must be 1D')
+
+
+   # all components of 1st three inputs must have identical dimensions
+   # NOTE: for object arrays, this only compares the shapes of the object arrays,
+   #       NOT any of the arrays referenced by each object, which are allowed to
+   #       differ in shape as long as they are 1D
+   if not(rvecs[0].shape == Jvecs[0].shape and
+          rvecs[0].shape == dvecs.shape):
+      raise Exception('All components of first 3 input components must all have same shape')
+
+
+   # check fourth required input parameter
+   if not(len(observs) == 3):
+      raise Exception('4th input must contain 3 items')
+   elif all([np.isscalar(observs[i]) for i in range(3)]):
+      # convert scalars to 0-rank arrays
+      observs[0] = np.array(observs[0])
+      observs[1] = np.array(observs[1])
+      observs[2] = np.array(observs[2])
+   elif not(all([type(observs[i]) is np.ndarray for i in range(3)])):
+      raise Exception('4th input must hold all scalars or all ndarrays')
+   elif not(observs[0].shape == observs[1].shape and
+            observs[0].shape == observs[2].shape):
+      raise Exception('4th input arrays must all have same shape')
+
+
+
+   #
+   # Start actual algorithm
+   #
+
+   # copy and flatten rvecs, Jvecs, and dvecs into individual component arrays
+   # NOTE: this creates contiguous memory blocks for each variable, allowing
+   #       NumPy's efficient array vectorization, which should be faster than
+   #       any parallelization given adequate memory; this function can still
+   #       be parallelized by processing each observatory separately
+   # FIXME: weird things happen with concatenate() and object arrays; it would
+   #        be much more readable if we could avoid this conditional block
+   if rvecs[0].dtype == object:
+      xs = np.concatenate(rvecs[0].flatten())
+      ys = np.concatenate(rvecs[1].flatten())
+      zs = np.concatenate(rvecs[2].flatten())
+      Jxs = np.concatenate(Jvecs[0].flatten())
+      Jys = np.concatenate(Jvecs[1].flatten())
+      Jzs = np.concatenate(Jvecs[2].flatten())
+      dlavs = np.concatenate(dvecs.flatten())
+   else:
+      xs = rvecs[0].flatten()
+      ys = rvecs[1].flatten()
+      zs = rvecs[2].flatten()
+      Jxs = Jvecs[0].flatten()
+      Jys = Jvecs[1].flatten()
+      Jzs = Jvecs[2].flatten()
+      dlavs = dvecs.flatten()
+
+
+   # copy and flatten observ[*] into individual observatory arrays
+   obs_xs = observs[0].flatten()
+   obs_ys = observs[1].flatten()
+   obs_zs = observs[2].flatten()
+
+   # get number of observatories
+   nobs = np.size(obs_xs)
+
+
+   # pre-allocate output arrays
+   # NOTE: these are flattened for now, we will reshape them to match
+   #       observs on exit
+   dBxs = np.zeros(obs_xs.shape)
+   dBys = np.zeros(obs_ys.shape)
+   dBzs = np.zeros(obs_zs.shape)
+
+
+   #############################################################################
+   ##
+   ## This block is a NumPy vectorized version of the following loop. It was
+   ## tested, and generates results identical to those from the following loop.
+   ## We commented it out and use the loop because when more than a few hundred
+   ## observatories are processed), the memory management overhead slows things
+   ## considerably on a Macintosh laptop with 8GB RAM.
+   ##
+   ## Tested the vectorized code on NCAR's Geyser, which has two terabytes (!)
+   ## of RAM, but it is still slower than the following loop. Some day I may
+   ## investigate this further, but for now stick with the loop. Some notes and
+   ## ideas on possible causes of the unexpected slowdown:
+   ##
+   ## * Some very basic profiling suggests that the major bottleneck occurs when
+   ##   calculating dr3; some moderate speed improvements were achieved when the
+   ##   old-school numerical trick of multiplying values 2 or 3 times, rather
+   ##   than relying on power() functions (or ^ or ** operators), was used, but
+   ##   the loop was still faster.
+   ## * NCAR's Geyser is a distributed memory architecture...amazingly, I think
+   ##   Geyser might actually be shared memory, according to online docs
+   ## * NumPy's "broadcasting" is not as efficient as one might believe; try
+   ##   creating full matrices manually (use tile() command(?)).
+   ## * Try multiplying matrices in-place using a *= operator...doesn't do much
+   ##   when in loop mode, but maybe for large arrays it will be faster.
+   ##
+   #############################################################################
+   ##
+   ## # attempt to vectorize over observatories too
+   ## dxs = obs_xs.reshape(1,obs_xs.size) - xs.reshape(xs.size,1)
+   ## dys = obs_ys.reshape(1,obs_ys.size) - ys.reshape(ys.size,1)
+   ## dzs = obs_zs.reshape(1,obs_zs.size) - zs.reshape(zs.size,1)
+   ##
+   ## #dr3 = np.sqrt(dxs**2 + dys**2 + dzs**2)**3
+   ## dr = np.sqrt(dxs*dxs + dys*dys + dzs*dzs)
+   ## dr3 = dr * dr * dr
+   ##
+   ##
+   ## dBxs = 1e-7 * np.nansum( (Jys.reshape(Jys.size,1) * dzs -
+   ##                          Jzs.reshape(Jzs.size,1) * dys) /
+   ##                         dr3 * dlavs.reshape(dlavs.size,1), axis=0).flatten()
+   ## dBys = 1e-7 * np.nansum( (Jzs.reshape(Jzs.size,1) * dxs -
+   ##                          Jxs.reshape(Jxs.size,1) * dzs) /
+   ##                         dr3 * dlavs.reshape(dlavs.size,1), axis=0).flatten()
+   ## dBzs = 1e-7 * np.nansum( (Jxs.reshape(Jxs.size,1) * dys -
+   ##                          Jys.reshape(Jys.size,1) * dxs) /
+   ##                         dr3 * dlavs.reshape(dlavs.size,1), axis=0).flatten()
+   ##
+   #############################################################################
+
+   # loop over observatories
+   for j in range(nobs):
+
+
+      # get displacement vectors from jth observatory to each current segment
+      dxs = obs_xs[j] - xs
+      dys = obs_ys[j] - ys
+      dzs = obs_zs[j] - zs
+
+      # cube the magnitude of displacment vector
+      #dr3 = np.sqrt(dxs**2 + dys**2 + dzs**2)**3
+      dr = np.sqrt(dxs*dxs + dys*dys + dzs*dzs)
+      dr3 = dr*dr*dr # avoiding powers leads to 2-3x speed improvement
+
+      # integrate to get delta_B
+      # NOTE: mu_naught = 4 * pi * 10^-7 Webers/(A*m), which if used here, leads
+      #       to a flux density in units of Tesla. Given there is a 4*pi normalizing
+      #       constant in the Biot-Savart relationsip, we can simply use 10^-7 to
+      #       produce results in Tesla.
+      dBxs[j] = 1e-7 * np.nansum( (Jys * dzs - Jzs * dys) / dr3 * dlavs)
+      dBys[j] = 1e-7 * np.nansum( (Jzs * dxs - Jxs * dzs) / dr3 * dlavs)
+      dBzs[j] = 1e-7 * np.nansum( (Jxs * dys - Jys * dxs) / dr3 * dlavs)
+
+
+   return (dBxs.reshape(observs[0].shape),
+           dBys.reshape(observs[1].shape),
+           dBzs.reshape(observs[2].shape))
+
+
+
+
+
+def bs_sphere(rvecs, Jvecs, dvecs, observs):
+   """
+   Calculate magnetic perturbation in local spherical coordinates, caused by
+   currents measured in their own local sperical coordinates, using well-known
+   Biot-Savart relationship.
+
+   Note: inputs are converted into Cartesian coordinates before calling
+         bs_cart(), whose results are then converted back into spherical
+         coordinates; so, don't use this if your inputs are already in
+         Cartesian coordinates.
+
+
+   Inputs
+     - rvecs is 3-tuple/list of position vector components, or arrays of position
+       vector components, or arrays of objects that reference position vector
+       components of current element center(s):
+        phis    - phi position vector component(s)
+        thetas  - theta position vector component(s)
+        rhos    - rho position vector component(s)
+     - Jvecs is 3-tuple/list of current (density) components, or arrays of
+       current (density) components, or arrays of objects that reference current
+       (density) components at positions specified via rvecs:
+        Jphis   - phi current (density) component(s)
+        Jthetas - theta current (density) component(s)
+        Jrhos   - rho current (density) component(s)
+     - dvecs is a differential length/area/volume, or array of differential
+       lengths/areas/volumes, or array of objects that reference differential
+       lengths/areas/volumes, depending on if Jvecs describes line currents (A),
+       current sheet densities (A/m), or current volume densities (A/m/m)
+     - observs is 3-tuple/list or same-shaped ND array of observatory location(s):
+        obs_phis   - phi components of observatory location(s)
+        obs_thetas - theta components of observatory location(s)
+        obs_rhos   - rho components of observatory location(s)
+
+   Outputs
+     - deltaB is 3-tuple/list or same-shaped ND array of magnetic perturbation(s):
+        dBphis  - phi components of deltaB at locations specified in observ
+        dBthetas- theta components of deltaB at locations specified in observ
+        dBrhos  - rho components of deltaB at locations specified in observ
+   """
+
+   """
+   NOTES:
+   This function was originally implemented as a direct tranlation of Kisabeth
+   and Rostoker (1977)'s "matrix" formulation for integrating the Biot-Savart
+   equation in local spherical coordinates. It was expected that this would be
+   more numerically efficient than: 1) tranforming spherical coordinates into
+   Cartesian; 2) integrating B-S equation; and 3) transforming results back
+   into spherical coordinates. It turned out to be ~6x slower! It is likely
+   that there exists a simple tweak for the K-R algorithm as implemented below
+   that will improve performance, but until I can investigate this further, I
+   simply wrap bs_cart() here. -EJR 10/2013
+
+
+   REFERENCES:
+   Kisabeth & Rostoker (1977), "Modelling of three-dimensional current systems
+     associated with magnetospheric substorms",
+
+   """
+
+   #
+   # Pre-process inputs
+   #
+
+   # start by converting all expected list-like inputs into lists;
+   # this simplifies input checking, and allows users to pass multi-component
+   # inputs as lists, tuples, or even arrays-of-objects
+   rvecs = list(rvecs)
+   Jvecs = list(Jvecs)
+   observs = list(observs)
+
+
+   # check first required input parameter
+   if not(len(rvecs) == 3):
+      raise Exception('1st input must contain 3 items')
+   elif all([np.isscalar(rvecs[i]) for i in range(3)]):
+      # convert scalars to 0-rank arrays
+      rvecs[0] = np.array(rvecs[0])
+      rvecs[1] = np.array(rvecs[1])
+      rvecs[2] = np.array(rvecs[2])
+   elif not(all([type(rvecs[i]) is np.ndarray for i in range(3)])):
+      raise Exception('1st input must hold all scalars or all ndarrays')
+   elif not(rvecs[0].shape == rvecs[1].shape and
+            rvecs[0].shape == rvecs[2].shape):
+      raise Exception('1st input arrays must all have same shape')
+
+   if all([rvecs[i].dtype == object for i in range(3)]):
+      # if here, all input arrays are object arrays
+      if not(all([rvecs[i].flat[j].ndim == 1 for i in range(3) for j in range(rvecs[i].size) ])):
+         raise Exception('1st input object array elements must be 1D')
+   elif not(all([rvecs[i].dtype != object for i in range(3)])):
+      raise Exception('1st input must contain all contiguous or all object arrays')
+
+
+   # check second required input parameter
+   if not(len(Jvecs) == 3):
+      raise Exception('1st input must contain 3 items')
+   elif all([np.isscalar(Jvecs[i]) for i in range(3)]):
+      # convert scalars to 0-rank arrays
+      Jvecs[0] = np.array(Jvecs[0])
+      Jvecs[1] = np.array(Jvecs[1])
+      Jvecs[2] = np.array(Jvecs[2])
+   elif not(all([type(Jvecs[i]) is np.ndarray for i in range(3)])):
+      raise Exception('2nd input must hold all scalars or all ndarrays')
+   elif not(Jvecs[0].shape == Jvecs[1].shape and
+            Jvecs[0].shape == Jvecs[2].shape):
+      raise Exception('2nd input arrays must all have same shape')
+
+   if all([Jvecs[i].dtype == object for i in range(3)]):
+      # if here, all input arrays are object arrays
+      if not(all([Jvecs[i].flat[j].ndim == 1
+                  for i in range(3) for j in range(Jvecs[i].size) ])):
+         raise Exception('2nd input object array elements must be 1D')
+   elif not(all([Jvecs[i].dtype != object for i in range(3)])):
+      raise Exception('2nd input must contain all contiguous or all object arrays')
+
+
+   # check third required input parameter
+   if np.isscalar(dvecs):
+      # convert scalar to 0-rank array
+      dvecs = np.array(dvecs)
+   elif not(type(dvecs) is np.ndarray):
+      raise Exception('3rd input must be a scalar or ndarray')
+
+   if dvecs.dtype == object:
+      if not(all([dvecs.flat[j].ndim == 1 for j in range(dvecs.size)])):
+         raise Exception('3rd input object array elemetns must be 1D')
+
+
+   # all components of 1st three inputs must have identical dimensions
+   # NOTE: for object arrays, this only compares the shapes of the object arrays,
+   #       NOT any of the arrays referenced by each object, which are allowed to
+   #       differ in shape as long as they are 1D
+   if not(rvecs[0].shape == Jvecs[0].shape and
+          rvecs[0].shape == dvecs.shape):
+      raise Exception('All components of first 3 input components must all have same shape')
+
+
+   # check fourth required input parameter
+   if not(len(observs) == 3):
+      raise Exception('4th input must contain 3 items')
+   elif all([np.isscalar(observs[i]) for i in range(3)]):
+      # convert scalars to 0-rank arrays
+      observs[0] = np.array(observs[0])
+      observs[1] = np.array(observs[1])
+      observs[2] = np.array(observs[2])
+   elif not(all([type(observs[i]) is np.ndarray for i in range(3)])):
+      raise Exception('4th input must hold all scalars or all ndarrays')
+   elif not(observs[0].shape == observs[1].shape and
+            observs[0].shape == observs[2].shape):
+      raise Exception('4th input arrays must all have same shape')
+
+
+
+
+   #
+   # Start algorithm
+   #
+
+
+   # copy and flatten rvecs, Jvecs, and dvecs into individual component arrays
+   # NOTE: this creates contiguous memory blocks for each variable, allowing
+   #       NumPy's efficient array vectorization, which should be faster than
+   #       any parallelization given adequate memory; this function can still
+   #       be parallelized by processing each observatory separately
+   # FIXME: weird things happen with concatenate() and object arrays; it would
+   #        be much more readable if we could avoid this conditional block
+   if rvecs[0].dtype == object:
+      phis = np.concatenate(rvecs[0].flatten())
+      thetas = np.concatenate(rvecs[1].flatten())
+      rhos = np.concatenate(rvecs[2].flatten())
+      Jphis = np.concatenate(Jvecs[0].flatten())
+      Jthetas = np.concatenate(Jvecs[1].flatten())
+      Jrhos = np.concatenate(Jvecs[2].flatten())
+      dlavs = np.concatenate(dvecs.flatten())
+   else:
+      phis = rvecs[0].flatten()
+      thetas = rvecs[1].flatten()
+      rhos = rvecs[2].flatten()
+      Jphis = Jvecs[0].flatten()
+      Jthetas = Jvecs[1].flatten()
+      Jrhos = Jvecs[2].flatten()
+      dlavs = dvecs.flatten()
+
+
+   # copy and flatten observ[*] into individual observatory arrays
+   obs_phis = observs[0].flatten()
+   obs_thetas = observs[1].flatten()
+   obs_rhos = observs[2].flatten()
+
+   # get number of observatories
+   nobs = np.size(obs_phis)
+
+
+
+   #############################################################################
+   ##
+   ## Wrap bs_cart() after tranforming all input coordinates from spherical into
+   ## Cartesian, then transform results back into spherical coordinates
+   ##
+   #############################################################################
+
+   # geopack_08 doesn't handle vectors at the origin (0,0,0) very well, so we
+   # will use the home-built transforms found in this module instead
+
+   # transform input current segment positions into Cartesian coordinates
+   #xs, ys, zs, Jxs, Jys, Jzs = pyLTR.transform.SPHtoCAR(phis, thetas, rhos,
+   #                                                     Jphis, Jthetas, Jrhos)
+   xs, ys, zs = _sp2cart_pos((phis, thetas, rhos))
+   Jxs, Jys, Jzs = _sp2cart_dir((Jphis, Jthetas, Jrhos), (phis, thetas, rhos))
+
+   # transform input observatory locations into Cartesian coordinates
+   #obs_xs, obs_ys, obs_zs = pyLTR.transform.SPHtoCAR(obs_phis, obs_thetas, obs_rhos)
+   obs_xs, obs_ys, obs_zs = _sp2cart_pos((obs_phis, obs_thetas, obs_rhos))
+
+   # call bs_cart()
+   dBxs, dBys, dBzs = bs_cart((xs,ys,zs),(Jxs,Jys,Jzs),dlavs,(obs_xs,obs_ys,obs_zs))
+
+   # # transform outputs back into spherical
+   # _,_,_, dBphis, dBthetas, dBrhos = pyLTR.transform.CARtoSPH(obs_xs, obs_ys, obs_zs,
+   #                                                            dBxs, dBys, dBzs)
+   dBphis, dBthetas, dBrhos = _cart2sp_dir((dBxs, dBys, dBzs),
+                                           (obs_xs, obs_ys, obs_zs))
+
+   #############################################################################
+   ##
+   ## K&R-1977 algorithm implemented below...we chose to simply wrap bs_cart()
+   ## with appropriate coordinate transformations because it is so much faster.
+   ## Leave it intact so that it may be used for testing, or possibly optimized
+   ## at a later date.
+   ##
+   #############################################################################
+   ##
+   ##
+   ## # pre-allocate output arrays
+   ## # NOTE: these are flattened for now, we will reshape them to match
+   ## #       observs on exit
+   ## dBphis = np.zeros(obs_phis.shape)
+   ## dBthetas = np.zeros(obs_thetas.shape)
+   ## dBrhos = np.zeros(obs_rhos.shape)
+   ##
+   ##
+   ##
+   ## # loop over observatories
+   ## for j in range(nobs):
+   ##
+   ##    print '\rObservatory',j+1,' of ',nobs,
+   ##    sys.stdout.flush()
+   ##
+   ##    # rotation matrix elements a_{ij}
+   ##    # NOTE: we don't actually create the full matrix, or multiply by it; this
+   ##    # is probably somewhat inefficient, but it follows the algorithm described
+   ##    # by K&R(1977) exactly...it probably doesn't lose too much efficiency.
+   ##    a11 = (np.sin(obs_thetas[j]) * np.sin(thetas) * np.cos(obs_phis[j] - phis) +
+   ##           np.cos(obs_thetas[j]) * np.cos(thetas))
+   ##    a12 = (np.sin(obs_thetas[j]) * np.cos(thetas) * np.cos(obs_phis[j] - phis) -
+   ##           np.cos(obs_thetas[j]) * np.sin(thetas))
+   ##    a13 =  np.sin(obs_thetas[j]) * np.sin(obs_phis[j] - phis)
+   ##    a21 = (np.cos(obs_thetas[j]) * np.sin(thetas) * np.cos(obs_phis[j] - phis) -
+   ##           np.sin(obs_thetas[j]) * np.cos(thetas))
+   ##    a22 = (np.cos(obs_thetas[j]) * np.cos(thetas) * np.cos(obs_phis[j] - phis) +
+   ##           np.sin(obs_thetas[j]) * np.sin(thetas))
+   ##    a23 =  np.cos(obs_thetas[j]) * np.sin(obs_phis[j] - phis)
+   ##    a31 = -np.sin(thetas) * np.sin(obs_phis[j] - phis)
+   ##    a32 = -np.cos(thetas) * np.sin(obs_phis[j] - phis)
+   ##    a33 = np.cos(obs_phis[j] - phis);
+   ##
+   ##
+   ##    # create rotation matrix elements k_{ij}
+   ##    invRmag = 1 / np.sqrt(rhos**2 + obs_rhos[j]**2 - 2 * rhos * obs_rhos[j] * a11)
+   ##
+   ##    # if Rmag==zero, invRmag==Inf...assume magnetic field cancels within the
+   ##    # volume, just like at the center of a wire with uniform current
+   ##    invRmag[np.isinf(invRmag)] = 0;
+   ##
+   ##    k11 = invRmag**3 * np.zeros(np.size(a11));
+   ##    k12 = invRmag**3 * rhos * a13;
+   ##    k13 = invRmag**3 * -rhos * a12;
+   ##    k21 = invRmag**3 * obs_rhos[j] * a31;
+   ##    k22 = invRmag**3 * (rhos * a23 + obs_rhos[j] * a32);
+   ##    k23 = invRmag**3 * (obs_rhos[j] * a33 - rhos * a22);
+   ##    k31 = invRmag**3 * -obs_rhos[j] * a21;
+   ##    k32 = invRmag**3 * (rhos * a33 - obs_rhos[j] * a22);
+   ##    k33 = invRmag**3 * -(obs_rhos[j] * a23 + rhos * a32);
+   ##
+   ##
+   ##    # integrate to get delta_B in local spherical coordinates
+   ##    # NOTE: mu_naught = 4 * pi * 10^-7 Webers/(A*m), which if used here, leads
+   ##    #       to a flux density in units of Tesla. Given there is a 4*pi normalizing
+   ##    #       constant in the Biot-Savart relationsip, we can simply use 10^-7 to
+   ##    #       produce results in Tesla.
+   ##    dBrhos[j]   = dBrhos[j] +   1e-7 * np.nansum((k11 * Jrhos +
+   ##                                                 k12 * Jthetas +
+   ##                                                 k13 * Jphis) * dlavs)
+   ##    dBthetas[j] = dBthetas[j] + 1e-7 * np.nansum((k21 * Jrhos +
+   ##                                                 k22 * Jthetas +
+   ##                                                 k23 * Jphis) * dlavs)
+   ##    dBphis[j]   = dBphis[j] +   1e-7 * np.nansum((k31 * Jrhos +
+   ##                                                 k32 * Jthetas +
+   ##                                                 k33 * Jphis) * dlavs)
+   ##
+   ## # end of 'for j in range(nobs')
+   ##
+   ## print
+   ##
+   ## return (dBphis.reshape(observs[0].shape),
+   ##         dBthetas.reshape(observs[1].shape),
+   ##         dBrhos.reshape(observs[2].shape))
+   ##
+   #############################################################################
+
+
+   # reshape dB's to match original observatory inputs(s)
+   return (dBphis.reshape(observs[0].shape),
+           dBthetas.reshape(observs[1].shape),
+           dBrhos.reshape(observs[2].shape))
+
+
+
 def _dp2sp_pos(qs, ps):
   """
   This support function transforms position vectors in a dipole coordinate
@@ -1886,6 +3028,632 @@ def _dp2sp_dir(vqs, vps, thetas):
   return (vrhos, vthetas)
 
 
+def _sp2cart_pos(r):
+   """
+   convert spherical position coordinates to cartesian
+   """
+   phis, thetas, rhos = r
+
+   xs = rhos * np.sin(thetas) * np.cos(phis)
+   ys = rhos * np.sin(thetas) * np.sin(phis)
+   zs = rhos * np.cos(thetas)
+
+   return (xs, ys, zs)
+
+
+def _sp2cart_dir(v, r):
+   """
+   convert spherical direction vectors to cartesian
+  """
+   dphis, dthetas, drhos = v
+   phis, thetas, rhos = r
+
+   dxs = (np.sin(thetas) * np.cos(phis) * drhos +
+          np.cos(thetas) * np.cos(phis) * dthetas -
+          np.sin(phis) * dphis)
+
+   dys = (np.sin(thetas) * np.sin(phis) * drhos +
+          np.cos(thetas) * np.sin(phis) * dthetas +
+          np.cos(phis) * dphis)
+
+   dzs = (np.cos(thetas) * drhos - np.sin(thetas) * dthetas)
+
+
+   return (dxs, dys, dzs)
+
+
+def _cart2sp_pos(r):
+   """
+   convert cartesian position coordinates to spherical
+   """
+   xs, ys, zs = r
+
+   # use arctan2
+   phis = np.arctan2(ys, xs)
+
+   # first determine cylindrical radius, or else we won't be able to
+   # get a reasonable theta if/when rsph is zero
+   rhos = np.sqrt(xs**2 + ys**2)
+
+   # calculate thetas
+   thetas = np.arctan2(rhos,zs)
+
+   # now, calculate spherical radius
+   rhos = np.sqrt(rhos**2 + zs**2)
+
+
+   return (phis, thetas, rhos)
+
+
+def _cart2sp_dir(v, r):
+   """
+   convert cartesian direction vectors to cartesian
+   """
+   dxs, dys, dzs = v
+   xs, ys, zs = r
+
+   # first, find position vectors in spherical coordinates
+   (phis, thetas, rhos) = _cart2sp_pos((xs, ys, zs))
+
+   drhos = (np.sin(thetas) * np.cos(phis) * dxs +
+            np.sin(thetas) * np.sin(phis) * dys +
+            np.cos(thetas) * dzs)
+
+   dthetas = (np.cos(thetas) * np.cos(phis) * dxs +
+              np.cos(thetas) * np.sin(phis) * dys -
+              np.sin(thetas) * dzs)
+
+   dphis = (np.cos(phis) * dys - np.sin(phis) * dxs)
+
+
+   return (dphis, dthetas, drhos)
+
+
+
+
+
+###
+### Various tests follow; these should work with the nose package, which
+### means their name should start with "Test", or "test", followed by an
+### underscore
+###
+
+def test_line_current_bs_cart():
+   """
+   bs_cart() approximately reproduces magnetic field from infinite line current
+   as determined using Ampere's Law
+   """
+
+   import numpy as np
+
+   # generate a really long line along the Z axis
+   zs = np.linspace(-100000,100000,200001)
+   xs = zs * 0
+   ys = zs * 0
+
+   # specify 1-amp current along the Z axis
+   Jzs = np.ones(zs.size)
+   Jxs = Jzs * 0
+   Jys = Jzs * 0
+
+   # specify contiguous differential lengths
+   dvecs = np.ones(zs.size)
+
+   # define positions in xy plane at which to "observe" magnetic field
+   obs_zs = np.array([0,0,0,0])
+   obs_xs = np.array([10,0,-10,0])
+   obs_ys = np.array([0,10,0,-10])
+
+   # call bs_cart() to generate magnetic fields at observed locations
+   dBxs, dBys, dBzs = bs_cart((xs,ys,zs), (Jxs,Jys,Jzs), dvecs,
+                              (obs_xs,obs_ys,obs_zs))
+
+   # use Ampere's law to get analytic expression for infinite line current
+   dBtot = (4*np.pi*1e-7 * 1.) / (2*np.pi*10.)
+   dBzs_anal = np.array([0,0,0,0])
+   dBxs_anal = np.array([0,-dBtot,0,dBtot])
+   dBys_anal = np.array([dBtot,0,-dBtot,0])
+
+   # compare BS with analytic results, properly accounting for expected zeros
+   np.testing.assert_allclose(dBxs[np.abs(dBxs_anal) >= 1e-20],
+                              dBxs_anal[np.abs(dBxs_anal) >= 1e-20],
+                              rtol=1e-7, atol=0)
+   np.testing.assert_allclose(dBys[np.abs(dBys_anal) >= 1e-20],
+                              dBys_anal[np.abs(dBys_anal) >= 1e-20],
+                              rtol=1e-7, atol=0)
+   np.testing.assert_allclose(dBzs[np.abs(dBzs_anal) >= 1e-20],
+                              dBzs_anal[np.abs(dBzs_anal) >= 1e-20],
+                              rtol=1e-7, atol=0)
+
+   np.testing.assert_allclose(dBxs[np.abs(dBxs_anal) < 1e-20],
+                              dBxs_anal[np.abs(dBxs_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+   np.testing.assert_allclose(dBys[np.abs(dBys_anal) < 1e-20],
+                              dBys_anal[np.abs(dBys_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+   np.testing.assert_allclose(dBzs[np.abs(dBzs_anal) < 1e-20],
+                              dBzs_anal[np.abs(dBzs_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+
+
+def test_line_current_bs_sphere():
+   """
+   bs_sphere() approximately reproduces magnetic field from infinite line current
+   as determined using Ampere's Law
+   """
+
+   import numpy as np
+
+   # generate a really long line along the Z axis
+   rhos = np.abs(np.linspace(-100000,100000,200001))
+   phis = rhos * 0
+   thetas = np.concatenate((np.tile(np.pi,100000), np.tile(0, 100001)) )
+
+   # specify 1-amp current along the Z axis
+   Jrhos = np.concatenate((-np.ones(100000), np.ones(100001)) )
+   Jphis = Jrhos * 0
+   Jthetas = Jrhos * 0
+
+   # specify contiguous differential lengths
+   dvecs = np.ones(rhos.size)
+
+   # define positions in theta=pi/2 plane at which to "observe" magnetic field
+   obs_rhos = np.array([10, 10, 10, 10])
+   obs_phis = np.array([0, np.pi/2., np.pi, 3.*np.pi/2.])
+   obs_thetas = np.array([np.pi/2., np.pi/2., np.pi/2., np.pi/2.])
+
+   # call bs_sphere() to generate magnetic fields at observed locations
+   dBphis, dBthetas, dBrhos = bs_sphere((phis,thetas,rhos), (Jphis,Jthetas,Jrhos), dvecs,
+                              (obs_phis,obs_thetas,obs_rhos))
+
+   # use Ampere's law to get analytic expression for infinite line current
+   dBtot = (4*np.pi*1e-7 * 1.) / (2*np.pi*10.)
+   dBrhos_anal = np.array([0,0,0,0])
+   dBphis_anal = np.array([dBtot,dBtot,dBtot,dBtot])
+   dBthetas_anal = np.array([0,0,0,0])
+
+
+   # compare BS with analytic results, properly accounting for expected zeros
+   np.testing.assert_allclose(dBphis[np.abs(dBphis_anal) >= 1e-20],
+                              dBphis_anal[np.abs(dBphis_anal) >= 1e-20],
+                              rtol=1e-7, atol=0)
+   np.testing.assert_allclose(dBthetas[np.abs(dBthetas_anal) >= 1e-20],
+                              dBthetas_anal[np.abs(dBthetas_anal) >= 1e-20],
+                              rtol=1e-7, atol=0)
+   np.testing.assert_allclose(dBrhos[np.abs(dBrhos_anal) >= 1e-20],
+                              dBrhos_anal[np.abs(dBrhos_anal) >= 1e-20],
+                              rtol=1e-7, atol=0)
+
+   np.testing.assert_allclose(dBphis[np.abs(dBphis_anal) < 1e-20],
+                              dBphis_anal[np.abs(dBphis_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+   np.testing.assert_allclose(dBthetas[np.abs(dBthetas_anal) < 1e-20],
+                              dBthetas_anal[np.abs(dBthetas_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+   np.testing.assert_allclose(dBrhos[np.abs(dBrhos_anal) < 1e-20],
+                              dBrhos_anal[np.abs(dBrhos_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+
+
+def test_loop_current_bs_sphere():
+   """
+   bs_sphere() approximately reproduces magnetic field from a loop current
+   as determined using technique at http://www.netdenizen.com/emagnettest/
+   """
+
+   import numpy as np
+   from scipy.special import ellipk, ellipe
+
+   # generate a loop current in the theta=pi/2 plane
+   rhos = np.zeros(100000) + 10
+   phis = np.linspace(0, 2.*np.pi, 100001)[:-1]
+   thetas = np.zeros(100000) + np.pi/2.
+
+   # specify 1-amp loop current
+   Jrhos = np.zeros(100000)
+   Jphis = np.ones(100000)
+   Jthetas = np.zeros(100000)
+
+   # specify contiguous differential arclengths of loop segments
+   dvecs = np.zeros(100000) + 2. * 10 * np.pi / 100000.
+
+   # define positions in theta=pi/2 plane at which to "observe" magnetic field
+   obs_rhos = np.linspace(0, 20, 10)
+   obs_phis = np.zeros(obs_rhos.size)
+   obs_thetas = np.zeros(obs_rhos.size) + np.pi/2.
+
+   # append positions along theta=0 line at which to observe magnetic field
+   obs_rhos = np.concatenate((obs_rhos, obs_rhos))
+   obs_phis = np.concatenate((obs_phis, obs_phis))
+   obs_thetas = np.concatenate((obs_thetas, np.zeros(obs_thetas.size) ))
+
+   # call bs_sphere() to generate magnetic fields at observed locations
+   dBphis, dBthetas, dBrhos = bs_sphere((phis,thetas,rhos), (Jphis,Jthetas,Jrhos), dvecs,
+                                        (obs_phis,obs_thetas,obs_rhos))
+
+   # use formula(s) from http://www.netdenizen.com/emagnettest/ for "analytic"
+   # solutions for loop current (using "" because I'm not sure if elliptical
+   # integral functions ellipe() and ellipk() are truly analytic)
+   dBrhos_anal = np.zeros(obs_rhos.size)
+   dBphis_anal = np.zeros(obs_rhos.size)
+   dBthetas_anal = np.zeros(obs_rhos.size)
+   for i in range(obs_rhos.size):
+
+      # convert observatory locations to cylindrical coordinates
+      xtmp, ytmp, ztmp = _sp2cart_pos((obs_phis[i], obs_thetas[i], obs_rhos[i]))
+      rtmp = np.sqrt(xtmp**2. + ytmp**2.)
+
+      # calculate parameters needed for solution
+      alpha = rtmp / 10.
+      beta = ztmp / 10.
+      if rtmp == 0:
+         gamma = 0
+      else:
+         gamma = ztmp / rtmp
+      q = ((1+alpha)**2. + beta**2.)
+      k = np.sqrt(4*alpha/q)
+
+      # calculate delta B at center of loop
+      B0 = (4 * np.pi * 1e-7 * 1) / (2.*10.) * 1.
+
+      # calculate delta B analytically using elliptical integral functions
+      dBztmp =  B0 / (np.pi * np.sqrt(q)) * \
+         (ellipe(k**2.) * ((1-alpha**2.-beta**2.)/(q-4*alpha)) + ellipk(k**2.))
+      dBrtmp = B0 * gamma / (np.pi * np.sqrt(q)) * \
+         (ellipe(k**2.) * ((1+alpha**2.+beta**2.)/(q-4*alpha)) - ellipk(k**2.))
+
+      # convert back to spherical coordinates
+      dBphis_anal[i], dBthetas_anal[i], dBrhos_anal[i] =  _cart2sp_dir((dBrtmp, 0., dBztmp),
+                                                                       (xtmp, ytmp, ztmp))
+
+
+   # compare BS with analytic results, properly accounting for expected zeros
+   np.testing.assert_allclose(dBphis[np.abs(dBphis_anal) >= 1e-20],
+                              dBphis_anal[np.abs(dBphis_anal) >= 1e-20],
+                              rtol=1e-7, atol=0)
+   np.testing.assert_allclose(dBthetas[np.abs(dBthetas_anal) >= 1e-20],
+                              dBthetas_anal[np.abs(dBthetas_anal) >= 1e-20],
+                              rtol=1e-7, atol=0)
+   np.testing.assert_allclose(dBrhos[np.abs(dBrhos_anal) >= 1e-20],
+                              dBrhos_anal[np.abs(dBrhos_anal) >= 1e-20],
+                              rtol=1e-7, atol=0)
+
+   np.testing.assert_allclose(dBphis[np.abs(dBphis_anal) < 1e-20],
+                              dBphis_anal[np.abs(dBphis_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+   np.testing.assert_allclose(dBthetas[np.abs(dBthetas_anal) < 1e-20],
+                              dBthetas_anal[np.abs(dBthetas_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+   np.testing.assert_allclose(dBrhos[np.abs(dBrhos_anal) < 1e-20],
+                              dBrhos_anal[np.abs(dBrhos_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+
+
+def test_fukushima_planar():
+   """
+   Confirm Fukushima's theorum for a planar geometry (i.e., uniformly expanding
+   currents, from a point source in a plane, generate a magnetic field that
+   cancels out a vertical line current that ends at that point source for all
+   points below the plane).
+   """
+
+   import numpy as np
+
+   # generate a really long line along the positive Z axis
+   rhos = np.linspace(0,100000, 100001)
+   phis = rhos * 0
+   thetas = rhos * 0
+
+   # specify a 1-amp current along the Zaxis
+   Jrhos = -np.ones(rhos.size)
+   Jphis = Jrhos * 0
+   Jthetas = Jrhos * 0
+
+   # specify contiguous differential lengths
+   dvecs = np.ones(rhos.size)
+
+   # generate a really large current sheet, expanding radially from a point
+   # source of 1-amp
+   # NOTE: exclude the origin, where density is infinite; this is allowed, since
+   #       calculated magnetic fields would cancel out everywhere anyway
+   meshPhis, meshThetas, meshRhos = np.meshgrid(np.linspace(0,2*np.pi,37)[:-1], # .1 degree longitude bins
+                                                np.pi/2., # co-latitude
+                                                np.linspace(0,100000, 100001)[1:], # radius, w/o origin
+                                                indexing='ij')
+   phis = np.concatenate((phis, meshPhis.flatten()))
+   thetas = np.concatenate((thetas, meshThetas.flatten()))
+   rhos = np.concatenate((rhos, meshRhos.flatten()))
+
+   Jphis = np.concatenate((Jphis, np.zeros(meshPhis.size) ))
+   Jthetas = np.concatenate((Jthetas, np.zeros(meshThetas.size) ))
+
+   # calculate current density by dividing by current segment arclength
+   Jrhos = np.concatenate((Jrhos, np.tile(1./36., 36*100000) /
+                           (2*np.pi/36. * meshRhos.flatten()) ) )
+
+   # dvecs is the area of current segments, from rho-.5 to rho+.5
+   dvecs = np.concatenate((dvecs, (np.pi/36. * ((meshRhos.flatten()+.5)**2 -
+                                                (meshRhos.flatten()-.5)**2) ) ) )
+
+
+   # specify a line of observation points that is 1000 meters off the Z-axis,
+   # equally distant to azimuthal rays, and which passes through the theta=pi/2
+   # plane from top to bottom
+   x,y,z = _sp2cart_pos((meshPhis[:2,0,0].mean(), np.pi/2., 1000))
+
+   obs_xs = np.ones(10)*x
+   obs_ys = np.ones(10)*y
+   obs_zs = np.linspace(5000,-5000,10) # ~500m above/below plane
+   obs_phis, obs_thetas, obs_rhos = _cart2sp_pos((obs_xs, obs_ys, obs_zs))
+
+   # call bs_sphere()
+   dBphisL, dBthetasL, dBrhosL = bs_sphere((phis[:100001], thetas[:100001], rhos[:100001]),
+                                           (Jphis[:100001], Jthetas[:100001], Jrhos[:100001]),
+                                           dvecs[:100001],
+                                           (obs_phis, obs_thetas, obs_rhos))
+
+   dBphisS, dBthetasS, dBrhosS = bs_sphere((phis[100001:], thetas[100001:], rhos[100001:]),
+                                           (Jphis[100001:], Jthetas[100001:], Jrhos[100001:]),
+                                           dvecs[100001:],
+                                           (obs_phis, obs_thetas, obs_rhos))
+
+   # expected results
+   dBphis_anal = np.concatenate((np.tile(-2e-10, 5), np.zeros(5) ))
+   dBthetas_anal = np.zeros(10)
+   dBrhos_anal = np.zeros(10)
+
+
+   # compare BS with analytic results, properly accounting for expected zeros
+   np.testing.assert_allclose((dBphisL+dBphisS)[np.abs(dBphis_anal) >= 1e-20],
+                              dBphis_anal[np.abs(dBphis_anal) >= 1e-20],
+                              rtol=1e-3, atol=0)
+   np.testing.assert_allclose((dBthetasL+dBthetasS)[np.abs(dBthetas_anal) >= 1e-20],
+                              dBthetas_anal[np.abs(dBthetas_anal) >= 1e-20],
+                              rtol=1e-3, atol=0)
+   np.testing.assert_allclose((dBrhosL+dBrhosS)[np.abs(dBrhos_anal) >= 1e-20],
+                              dBrhos_anal[np.abs(dBrhos_anal) >= 1e-20],
+                              rtol=1e-3, atol=0)
+
+   np.testing.assert_allclose((dBphisL+dBphisS)[np.abs(dBphis_anal) < 1e-20],
+                              dBphis_anal[np.abs(dBphis_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+   np.testing.assert_allclose((dBthetasL+dBthetasS)[np.abs(dBthetas_anal) < 1e-20],
+                              dBthetas_anal[np.abs(dBthetas_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+   np.testing.assert_allclose((dBrhosL+dBrhosS)[np.abs(dBrhos_anal) < 1e-20],
+                              dBrhos_anal[np.abs(dBrhos_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+
+
+
+def test_SECS_DivFree():
+   """
+   Confirm divergence free spherical elementary current returns expected results
+   as taken from Amm & Viljanen (Earth Platets Space, 1999).
+   """
+
+   import numpy as np
+
+   # first define <=1 degree grid-boundaries in latitude and longitude
+   # (fine grid needed so discretized areas are at least close to correct
+   #  when estimating current *density* later on)
+   rhos = np.array([6500e3])
+   phis = np.linspace(-180,180,360*5+1) * np.pi/180.
+   thetas = np.linspace(0,180,180*5+1) * np.pi/180.
+
+   # then find the mid-points...avoids singularities at the poles
+   phiGrid, thetaGrid, rhoGrid = np.meshgrid((phis[1:] + phis[:-1])/2,
+                                             (thetas[1:] + thetas[:-1])/2,
+                                             rhos, indexing='ij')
+
+
+   # 10000-amp I_0, like A&V-1999
+   I0 = 10000.
+
+   # Earth radius so that ionospheric height is 100km, like A&V-1999
+   R0 = 6400e3
+
+
+   # SECS div-free current density for each cell in the grid, like A&V-1999
+   JphiGrid = I0 / (4*np.pi*rhoGrid) * 1 / np.tan(thetaGrid/2.)
+   JthetaGrid = JphiGrid * 0.
+
+
+   # # differential areas for each grid cell
+   # # (these are approximations, but on a fine enough grid, they are OK)
+   dl1 = (rhoGrid * np.sin(thetaGrid) * # length of current sheet elements
+          np.tile(phis[1:] - phis[:-1], phiGrid.shape[1]).reshape(phiGrid.shape) )
+   dl2 = (rhoGrid * # cross sections of current sheet elements
+          np.tile(thetas[1:] - thetas[:-1], thetaGrid.shape[0]).reshape(thetaGrid.shape) )
+   dAs =  dl1 * dl2 # area of current sheet element
+   # # (these are exact...and lead to almost indistinguisable results)
+   # abs_dsintheta = np.abs(np.sin(np.pi/2 - thetas[1:]) -
+   #                        np.sin(np.pi/2 - thetas[:-1]))
+   # abs_dphi = np.abs(phis[1:] - phis[:-1])
+   # dAs = (rhoGrid**2 *
+   #        np.atleast_3d(abs_dsintheta.reshape(1,abs_dsintheta.size) *
+   #                      abs_dphi.reshape(abs_dphi.size,1) ) )
+
+   # specify a set of virtual observatories at which to sample deltaB
+   obs_phis = np.tile(0, 10)
+   obs_thetas = np.linspace(1, 5000e3/R0, 10)
+   obs_rhos = np.tile(R0, 10)
+
+
+   # caclulate deltaB using B-S
+   dBphi, dBtheta, dBrho = bs_sphere((phiGrid, thetaGrid, rhoGrid),
+                                     (JphiGrid, JthetaGrid, np.zeros(JphiGrid.shape)),
+                                     dAs,
+                                     (obs_phis,obs_thetas,obs_rhos))
+
+
+   # calculate deltaB analytically (from A&V-1999)
+   dBphi_anal = 0. * obs_phis
+   dBtheta_anal = (-(1 / 1e7 * I0 / (1 * obs_rhos * np.sin(obs_thetas))) *
+                   ((obs_rhos/rhos[0] - np.cos(obs_thetas)) /
+                    np.sqrt(1 - 2 * obs_rhos * np.cos(obs_thetas) / rhos[0] +
+                            (obs_rhos/rhos[0])**2 ) +
+                    np.cos(obs_thetas) ) )
+   dBrho_anal = ((1 / 1e7 * I0 / (1 * obs_rhos)) *
+                 (1 / np.sqrt(1 - 2 * obs_rhos * np.cos(obs_thetas) / rhos[0] +
+                             (obs_rhos/rhos[0])**2 ) - 1) )
+
+
+   # compare BS with analytic results, properly accounting for expected zeros
+   np.testing.assert_allclose(dBphi[np.abs(dBphi_anal) >= 1e-20],
+                              dBphi_anal[np.abs(dBphi_anal) >= 1e-20],
+                              rtol=1e-3, atol=0)
+   np.testing.assert_allclose(dBtheta[np.abs(dBtheta_anal) >= 1e-20],
+                              dBtheta_anal[np.abs(dBtheta_anal) >= 1e-20],
+                              rtol=1e-3, atol=0)
+   np.testing.assert_allclose(dBrho[np.abs(dBrho_anal) >= 1e-20],
+                              dBrho_anal[np.abs(dBrho_anal) >= 1e-20],
+                              rtol=1e-3, atol=0)
+
+   np.testing.assert_allclose(dBphi[np.abs(dBphi_anal) < 1e-20],
+                              dBphi_anal[np.abs(dBphi_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+   np.testing.assert_allclose(dBtheta[np.abs(dBtheta_anal) < 1e-20],
+                              dBtheta_anal[np.abs(dBtheta_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+   np.testing.assert_allclose(dBrho[np.abs(dBrho_anal) < 1e-20],
+                              dBrho_anal[np.abs(dBrho_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+
+
+
+def test_SECS_CurlFree():
+   """
+   Confirm curl free spherical elementary current returns expected results
+   as taken from Amm & Viljanen (Earth Platets Space, 1999).
+   """
+
+   import numpy as np
+
+   # First, poloidal currents on the sphere
+
+   # define <=1 degree grid-boundaries in latitude and longitude
+   # (fine grid needed so discretized areas are at least close to correct
+   #  when estimating current *density* later on)
+   rhos = np.array([6500e3])
+   phis = np.linspace(-180,180,360*5+1) * np.pi/180.
+   thetas = np.linspace(0,180,180*5+1) * np.pi/180.
+
+   # then find the mid-points...avoids singularities at the poles
+   phiGrid, thetaGrid, rhoGrid = np.meshgrid((phis[1:] + phis[:-1])/2,
+                                             (thetas[1:] + thetas[:-1])/2,
+                                             rhos, indexing='ij')
+
+
+   # 10000-amp I_0, like A&V-1999
+   I0 = 10000.
+
+   # Earth radius so that ionospheric height is 100km, like A&V-1999
+   R0 = 6400e3
+
+
+   # SECS curl-free current density for each cell in the grid
+   # (actually, this is the superposition of two curl-free SECs, in/out at
+   #  opposite poles, thus allowing us to ignore the constant divergence
+   #  that normally exists everywhere but the poles when we do the B-S)
+   JthetaGrid = (I0 / (4*np.pi*rhoGrid) / np.tan(thetaGrid/2.) +
+                 I0 / (4*np.pi*rhoGrid) / np.tan((np.pi - thetaGrid)/2.) )
+   JphiGrid = JthetaGrid * 0.
+
+
+   # # differential areas for each grid cell
+   # # (these are approximations, but on a fine enough grid, they are OK)
+   dl1 = (rhoGrid * np.sin(thetaGrid) * # length of current sheet elements
+          np.tile(phis[1:] - phis[:-1], phiGrid.shape[1]).reshape(phiGrid.shape) )
+   dl2 = (rhoGrid * # cross sections of current sheet elements
+          np.tile(thetas[1:] - thetas[:-1], thetaGrid.shape[0]).reshape(thetaGrid.shape) )
+   dAs =  dl1 * dl2 # area of current sheet element
+   # # (these are exact...and lead to almost indistinguisable results)
+   # abs_dsintheta = np.abs(np.sin(np.pi/2 - thetas[1:]) -
+   #                        np.sin(np.pi/2 - thetas[:-1]))
+   # abs_dphi = np.abs(phis[1:] - phis[:-1])
+   # dAs = (rhoGrid**2 *
+   #        np.atleast_3d(abs_dsintheta.reshape(1,abs_dsintheta.size) *
+   #                      abs_dphi.reshape(abs_dphi.size,1) ) )
+
+
+   # Now, create quasi-infinite line currents into and out of poles
+   rhosFAC = np.concatenate((np.linspace(10000000e3, rhos, 100001).reshape(-1,1),
+                             np.linspace(rhos, 10000000e3, 100001).reshape(-1,1)))
+   dvecs = np.concatenate(( np.abs(np.diff(rhosFAC[:100001], axis=0)),
+                            np.abs(np.diff(rhosFAC[100001:], axis=0)) ) )
+   rhosFAC = np.concatenate(( (rhosFAC[:100000]+rhosFAC[1:100001])/2,
+                              (rhosFAC[100001:-1]+rhosFAC[100002:])/2 ) )
+
+   phisFAC = rhosFAC * 0
+   thetasFAC = np.concatenate((np.tile(0, [100000,1]), np.tile(np.pi, [100000,1])))
+
+   # specify current along the Zaxis
+   JrhosFAC = np.concatenate((-np.ones((100000,1)) * I0, np.ones((100000,1)) * I0) )
+   JphisFAC = JrhosFAC * 0
+   JthetasFAC = JrhosFAC * 0
+
+
+
+   # specify a set of virtual observatories *outside* the ionosphere at which
+   # to sample deltaB
+   obs_phis = np.tile(0, 10)
+   obs_thetas = np.linspace(np.pi/2 - 5000e3/R0, np.pi/2 + 5000e3/R0, 10)
+   obs_rhos = np.tile(R0 * 2., 10)
+
+
+   # caclulate deltaB using B-S
+   dBphiGrid, dBthetaGrid, dBrhoGrid = bs_sphere((phiGrid, thetaGrid, rhoGrid),
+                                     (JphiGrid, JthetaGrid, np.zeros(JphiGrid.shape)),
+                                     dAs,
+                                     (obs_phis,obs_thetas,obs_rhos))
+   print(phisFAC.shape)
+   print(thetasFAC.shape)
+   print(rhosFAC.shape)
+   dBphiFAC, dBthetaFAC, dBrhoFAC = bs_sphere((phisFAC, thetasFAC, rhosFAC),
+                                     (JphisFAC, JthetasFAC, JrhosFAC),
+                                     dvecs,
+                                     (obs_phis,obs_thetas,obs_rhos))
+
+   dBphi = dBphiGrid + dBphiFAC
+   dBtheta = dBthetaGrid + dBthetaFAC
+   dBrho = dBrhoGrid + dBrhoFAC
+
+   # calculate deltaB analytically (from Fukushima-1976)
+   # NOTE: this applies Eq. 6 from Fukushima-1976 twice: once for incoming
+   #       current, and once for the outgoing current; it does NOT use Eq. 4,
+   #       which is wrong (i.e., 1/cos(theta) should be 1/sin(theta)). -EJR
+   dBphi_anal = (-I0 / (1e7 * obs_rhos) / np.tan(obs_thetas/2.) -
+                  I0 / (1e7 * obs_rhos) / np.tan((np.pi - obs_thetas)/2.) )
+   dBtheta_anal = 0. * obs_thetas
+   dBrho_anal = 0. * obs_rhos
+
+
+   # compare BS with analytic results, properly accounting for expected zeros
+   np.testing.assert_allclose(dBphi[np.abs(dBphi_anal) >= 1e-20],
+                              dBphi_anal[np.abs(dBphi_anal) >= 1e-20],
+                              rtol=1e-3, atol=0)
+   np.testing.assert_allclose(dBtheta[np.abs(dBtheta_anal) >= 1e-20],
+                              dBtheta_anal[np.abs(dBtheta_anal) >= 1e-20],
+                              rtol=1e-3, atol=0)
+   np.testing.assert_allclose(dBrho[np.abs(dBrho_anal) >= 1e-20],
+                              dBrho_anal[np.abs(dBrho_anal) >= 1e-20],
+                              rtol=1e-3, atol=0)
+
+   np.testing.assert_allclose(dBphi[np.abs(dBphi_anal) < 1e-20],
+                              dBphi_anal[np.abs(dBphi_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+   np.testing.assert_allclose(dBtheta[np.abs(dBtheta_anal) < 1e-20],
+                              dBtheta_anal[np.abs(dBtheta_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+   np.testing.assert_allclose(dBrho[np.abs(dBrho_anal) < 1e-20],
+                              dBrho_anal[np.abs(dBrho_anal) < 1e-20],
+                              rtol=0, atol=1e-12)
+
+
+
+
+
 def test_Type2_AllLongitude():
   """
   A Type 2 Bostrom loop whose boundaries extend 360 degrees (2*pi) should
@@ -1894,7 +3662,6 @@ def test_Type2_AllLongitude():
   comes down to Ampere's Law for a toroidal solenoid.
   """
   import numpy as np
-  import pyLTR.Physics.BS as bs
 
   # create Type 2 toroid in 1-degree bins
   phis = np.linspace(0,360,361) * np.pi/180.
@@ -1915,8 +3682,8 @@ def test_Type2_AllLongitude():
                                             np.linspace(0,np.pi,91),
                                             6378e3,
                                             indexing='ij')
-  (dBphi, dBtheta, dBrho) = bs.bs_sphere(r_B2, J_B2, d_B2,
-                                         (phi_obs, theta_obs, rho_obs) )
+  (dBphi, dBtheta, dBrho) = bs_sphere(r_B2, J_B2, d_B2,
+                                      (phi_obs, theta_obs, rho_obs) )
 
   # all B-field components should be zero
   dBphi_anal = dBphi * 0
