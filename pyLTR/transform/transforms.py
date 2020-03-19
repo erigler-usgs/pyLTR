@@ -58,7 +58,8 @@ def SPHtoCAR(phi,theta,rho,dphi=None,dtheta=None,drho=None):
          ##        to accept array inputs, if speed is an issue. -EJR 10/2013
          ##
          #output = pyLTR.transform.geopack_08.sphcar_08(rho,theta,phi,0.,0.,0., iSPHtoCAR)
-         v_gp08 = p.vectorize(pyLTR.transform.geopack_08.sphcar_08)
+         v_gp08 = p.vectorize(pyLTR.transform.geopack_08.sphcar_08,
+                        otypes=[float]*7)
          output = v_gp08(rho,theta,phi, 0.,0.,0., iSPHtoCAR)
          
          ## if scalar inputs, generate scalar outputs -EJR 10/2013
@@ -81,11 +82,13 @@ def SPHtoCAR(phi,theta,rho,dphi=None,dtheta=None,drho=None):
       ##
       
       #output = pyLTR.transform.geopack_08.sphcar_08(rho,theta,phi,0.,0.,0., iSPHtoCAR)
-      v_gp08a = p.vectorize(pyLTR.transform.geopack_08.sphcar_08)
+      v_gp08a = p.vectorize(pyLTR.transform.geopack_08.sphcar_08,
+                        otypes=[float]*7)
       _,_,_,x,y,z,_ = v_gp08a(rho,theta,phi, 0.,0.,0., iSPHtoCAR)
       
       #dx,dy,dz = pyLTR.transform.geopack_08.bspcar_08(theta,phi,drho,dtheta,dphi)
-      v_gp08b = p.vectorize(pyLTR.transform.geopack_08.bspcar_08)
+      v_gp08b = p.vectorize(pyLTR.transform.geopack_08.bspcar_08,
+                        otypes=[float]*3)
       dx,dy,dz = v_gp08b(theta,phi, drho,dtheta,dphi)
       
       ## if all scalar inputs, return scalar outputs, otherwise ndarrays -EJR 10/2013
@@ -118,7 +121,8 @@ def CARtoSPH(x,y,z,dx=None,dy=None,dz=None):
          ##        to accept array inputs, if speed is an issue. -EJR 10/2013
          ##
          #output = pyLTR.transform.geopack_08.sphcar_08(0.,0.,0.,x,y,z, iSPHtoCAR)
-         v_gp08 = p.vectorize(pyLTR.transform.geopack_08.sphcar_08)
+         v_gp08 = p.vectorize(pyLTR.transform.geopack_08.sphcar_08,
+                        otypes=[float]*7)
          output = v_gp08(0.,0.,0.,x,y,z, iSPHtoCAR)
          
          ## if scalar inputs, generate scalar outputs -EJR 10/2013
@@ -141,11 +145,13 @@ def CARtoSPH(x,y,z,dx=None,dy=None,dz=None):
       ##
       
       #output = pyLTR.transform.geopack_08.sphcar_08(0.,0.,0.,x,y,z, iSPHtoCAR)
-      v_gp08a = p.vectorize(pyLTR.transform.geopack_08.sphcar_08)
+      v_gp08a = p.vectorize(pyLTR.transform.geopack_08.sphcar_08,
+                        otypes=[float]*7)
       rho,theta,phi,_,_,_,_ = v_gp08a(0.,0.,0.,x,y,z, iSPHtoCAR)
       
       #dx,dy,dz = pyLTR.transform.geopack_08.bspcar_08(theta,phi,drho,dtheta,dphi)
-      v_gp08b = p.vectorize(pyLTR.transform.geopack_08.bcarsp_08)
+      v_gp08b = p.vectorize(pyLTR.transform.geopack_08.bcarsp_08,
+                        otypes=[float]*3)
       drho,dtheta,dphi = v_gp08b(x,y,z,dx,dy,dz)
       
       ## if scalar inputs, generate scalar outputs -EJR 10/2013
@@ -184,7 +190,8 @@ def SMtoGSM(x,y,z, dateTime):
         ##        to accept array inputs, if speed is an issue. -EJR 10/2013
         ##
         #output = pyLTR.transform.geopack_08.smgsw_08(x,y,z, 0.,0.,0., iSMtoGSM)
-        v_gp08 = p.vectorize(pyLTR.transform.geopack_08.smgsw_08)
+        v_gp08 = p.vectorize(pyLTR.transform.geopack_08.smgsw_08,
+                        otypes=[float]*6)
         output = v_gp08(x,y,z, 0.,0.,0., iSMtoGSM)
         
         ## if scalar inputs, generate scalar outputs -EJR 10/2013
@@ -223,7 +230,8 @@ def GSMtoSM(x,y,z, dateTime):
         ##        to accept array inputs, if speed is an issue. -EJR 10/2013
         ##
         #output = pyLTR.transform.geopack_08.smgsw_08(0.,0.,0., x, y, z, iSMtoGSM)
-        v_gp08 = p.vectorize(pyLTR.transform.geopack_08.smgsw_08)
+        v_gp08 = p.vectorize(pyLTR.transform.geopack_08.smgsw_08,
+                        otypes=[float]*6)
         output = v_gp08(0., 0., 0., x, y, z, iSMtoGSM)
         
         ## if scalar inputs, generate scalar outputs -EJR 10/2013
@@ -261,7 +269,8 @@ def GSEtoGSM(x,y,z, dateTime):
         ##        to accept array inputs, if speed is an issue. -EJR 10/2013
         ##
         #output = pyLTR.transform.geopack_08.gswgse_08(0.,0.,0., x,y,z, iGSEtoGSM)
-        v_gp08 = p.vectorize(pyLTR.transform.geopack_08.gswgse_08)
+        v_gp08 = p.vectorize(pyLTR.transform.geopack_08.gswgse_08,
+                        otypes=[float]*7)
         output = v_gp08(0., 0., 0., x, y, z, iGSEtoGSM)
         
         ## if scalar inputs, generate scalar outputs -EJR 10/2013
@@ -301,7 +310,8 @@ def GEOtoMAG(x,y,z, dateTime):
     ##        to accept array inputs, if speed is an issue. -EJR 10/2013
     ##
     #output = pyLTR.transform.geopack_08.gswgse_08(x, y, z, 0.,0.,0., iGEOtoMAG)
-    v_gp08 = p.vectorize(pyLTR.transform.geopack_08.geomag_08)
+    v_gp08 = p.vectorize(pyLTR.transform.geopack_08.geomag_08,
+                        otypes=[float]*6)
     output = v_gp08(x, y, z, 0., 0., 0., iGEOtoMAG)
      
     ## if scalar inputs, generate scalar outputs -EJR 10/2013
@@ -328,7 +338,8 @@ def MAGtoGEO(x,y,z, dateTime):
     ##        to accept array inputs, if speed is an issue. -EJR 10/2013
     ##
     #output = pyLTR.transform.geopack_08.gswgse_08(0.,0.,0., x, y, z, iGEOtoMAG)
-    v_gp08 = p.vectorize(pyLTR.transform.geopack_08.geomag_08)
+    v_gp08 = p.vectorize(pyLTR.transform.geopack_08.geomag_08,
+                        otypes=[float]*6)
     output = v_gp08(0., 0., 0., x, y, z, iGEOtoMAG)
      
     ## if scalar inputs, generate scalar outputs -EJR 10/2013
@@ -353,7 +364,8 @@ def SMtoMAG(x,y,z, dateTime):
    ##        to accept array inputs, if speed is an issue. -EJR 12/2013
    ##
    
-   v_gp08 = p.vectorize(pyLTR.transform.geopack_08.magsm_08)
+   v_gp08 = p.vectorize(pyLTR.transform.geopack_08.magsm_08,
+                        otypes=[float]*6)
    output =  v_gp08(0., 0., 0., x, y, z, iSMtoMAG)
    
    ## if scalar inputs, generate scalar outputs -EJR 12/2013
@@ -377,7 +389,8 @@ def MAGtoSM(x,y,z, dateTime):
    ##        optimized...Geopack should be ported to Python, or re-written
    ##        to accept array inputs, if speed is an issue. -EJR 12/2013
    ##
-   v_gp08 = p.vectorize(pyLTR.transform.geopack_08.magsm_08)
+   v_gp08 = p.vectorize(pyLTR.transform.geopack_08.magsm_08,
+                        otypes=[float]*6)
    output =  v_gp08(x, y, z, 0., 0., 0., iMAGtoSM)
    
    ## if scalar inputs, generate scalar outputs -EJR 12/2013
@@ -402,7 +415,8 @@ def GEOtoGSM(x,y,z, dateTime):
    ##        optimized...Geopack should be ported to Python, or re-written
    ##        to accept array inputs, if speed is an issue. -EJR 12/2013
    ##
-   v_gp08 = p.vectorize(pyLTR.transform.geopack_08.geogsw_08)
+   v_gp08 = p.vectorize(pyLTR.transform.geopack_08.geogsw_08,
+                        otypes=[float]*6)
    output =  v_gp08(x, y, z, 0., 0., 0., iGEOtoGSM)
    
    ## if scalar inputs, generate scalar outputs -EJR 12/2013
@@ -426,7 +440,8 @@ def GSMtoGEO(x,y,z, dateTime):
    ##        optimized...Geopack should be ported to Python, or re-written
    ##        to accept array inputs, if speed is an issue. -EJR 12/2013
    ##
-   v_gp08 = p.vectorize(pyLTR.transform.geopack_08.geogsw_08)
+   v_gp08 = p.vectorize(pyLTR.transform.geopack_08.geogsw_08,
+                        otypes=[float]*6)
    output =  v_gp08(0., 0., 0., x, y, z, iGEOtoGSM)
    
    ## if scalar inputs, generate scalar outputs -EJR 12/2013
@@ -452,10 +467,12 @@ def GEOtoSM(x,y,z, dateTime):
    ##        optimized...Geopack should be ported to Python, or re-written
    ##        to accept array inputs, if speed is an issue. -EJR 12/2013
    ##
-   v_gp08a = p.vectorize(pyLTR.transform.geopack_08.geogsw_08)
+   v_gp08a = p.vectorize(pyLTR.transform.geopack_08.geogsw_08,
+                        otypes=[float]*6)
    _,_,_,xgsm,ygsm,zgsm =  v_gp08a(x, y, z, 0., 0., 0., iGEOtoGSM)
    
-   v_gp08b = p.vectorize(pyLTR.transform.geopack_08.smgsw_08)
+   v_gp08b = p.vectorize(pyLTR.transform.geopack_08.smgsw_08,
+                        otypes=[float]*6)
    xsm,ysm,zsm,_,_,_ =  v_gp08b(0., 0., 0., xgsm, ygsm, zgsm, iGSMtoSM)
    
    
@@ -481,10 +498,12 @@ def SMtoGEO(x,y,z, dateTime):
    ##        optimized...Geopack should be ported to Python, or re-written
    ##        to accept array inputs, if speed is an issue. -EJR 12/2013
    ##
-   v_gp08a = p.vectorize(pyLTR.transform.geopack_08.smgsw_08)
+   v_gp08a = p.vectorize(pyLTR.transform.geopack_08.smgsw_08,
+                        otypes=[float]*6)
    _,_,_,xgsm,ygsm,zgsm =  v_gp08a(x, y, z, 0., 0., 0., iSMtoGSM)
    
-   v_gp08b = p.vectorize(pyLTR.transform.geopack_08.geogsw_08)
+   v_gp08b = p.vectorize(pyLTR.transform.geopack_08.geogsw_08,
+                        otypes=[float]*6)
    xgeo,ygeo,zgeo,_,_,_ =  v_gp08b(0., 0., 0., xgsm, ygsm, zgsm, iGSMtoGEO)
    
    
