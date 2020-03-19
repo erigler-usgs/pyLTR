@@ -1,4 +1,4 @@
-import pylab as p
+import numpy as np
 
 def bs_cart(rvecs, Jvecs, dvecs, observs):
    """
@@ -66,12 +66,12 @@ def bs_cart(rvecs, Jvecs, dvecs, observs):
    # check first required input parameter
    if not(len(rvecs) == 3):
       raise Exception('1st input must contain 3 items')
-   elif all([p.isscalar(rvecs[i]) for i in range(3)]):
+   elif all([np.isscalar(rvecs[i]) for i in range(3)]):
       # convert scalars to 0-rank arrays
-      rvecs[0] = p.array(rvecs[0])
-      rvecs[1] = p.array(rvecs[1])
-      rvecs[2] = p.array(rvecs[2])
-   elif not(all([type(rvecs[i]) is p.ndarray for i in range(3)])):
+      rvecs[0] = np.array(rvecs[0])
+      rvecs[1] = np.array(rvecs[1])
+      rvecs[2] = np.array(rvecs[2])
+   elif not(all([type(rvecs[i]) is np.ndarray for i in range(3)])):
       raise Exception('1st input must hold all scalars or all ndarrays')
    elif not(rvecs[0].shape == rvecs[1].shape and
             rvecs[0].shape == rvecs[2].shape):
@@ -89,12 +89,12 @@ def bs_cart(rvecs, Jvecs, dvecs, observs):
    # check second required input parameter
    if not(len(Jvecs) == 3):
       raise Exception('1st input must contain 3 items')
-   elif all([p.isscalar(Jvecs[i]) for i in range(3)]):
+   elif all([np.isscalar(Jvecs[i]) for i in range(3)]):
       # convert scalars to 0-rank arrays
-      Jvecs[0] = p.array(Jvecs[0])
-      Jvecs[1] = p.array(Jvecs[1])
-      Jvecs[2] = p.array(Jvecs[2])
-   elif not(all([type(Jvecs[i]) is p.ndarray for i in range(3)])):
+      Jvecs[0] = np.array(Jvecs[0])
+      Jvecs[1] = np.array(Jvecs[1])
+      Jvecs[2] = np.array(Jvecs[2])
+   elif not(all([type(Jvecs[i]) is np.ndarray for i in range(3)])):
       raise Exception('2nd input must hold all scalars or all ndarrays')
    elif not(Jvecs[0].shape == Jvecs[1].shape and
             Jvecs[0].shape == Jvecs[2].shape):
@@ -110,10 +110,10 @@ def bs_cart(rvecs, Jvecs, dvecs, observs):
 
 
    # check third required input parameter
-   if p.isscalar(dvecs):
+   if np.isscalar(dvecs):
       # convert scalar to 0-rank array
-      dvecs = p.array(dvecs)
-   elif not(type(dvecs) is p.ndarray):
+      dvecs = np.array(dvecs)
+   elif not(type(dvecs) is np.ndarray):
       raise Exception('3rd input must be a scalar or ndarray')
 
    if dvecs.dtype == object:
@@ -133,12 +133,12 @@ def bs_cart(rvecs, Jvecs, dvecs, observs):
    # check fourth required input parameter
    if not(len(observs) == 3):
       raise Exception('4th input must contain 3 items')
-   elif all([p.isscalar(observs[i]) for i in range(3)]):
+   elif all([np.isscalar(observs[i]) for i in range(3)]):
       # convert scalars to 0-rank arrays
-      observs[0] = p.array(observs[0])
-      observs[1] = p.array(observs[1])
-      observs[2] = p.array(observs[2])
-   elif not(all([type(observs[i]) is p.ndarray for i in range(3)])):
+      observs[0] = np.array(observs[0])
+      observs[1] = np.array(observs[1])
+      observs[2] = np.array(observs[2])
+   elif not(all([type(observs[i]) is np.ndarray for i in range(3)])):
       raise Exception('4th input must hold all scalars or all ndarrays')
    elif not(observs[0].shape == observs[1].shape and
             observs[0].shape == observs[2].shape):
@@ -158,13 +158,13 @@ def bs_cart(rvecs, Jvecs, dvecs, observs):
    # FIXME: weird things happen with concatenate() and object arrays; it would
    #        be much more readable if we could avoid this conditional block
    if rvecs[0].dtype == object:
-      xs = p.concatenate(rvecs[0].flatten())
-      ys = p.concatenate(rvecs[1].flatten())
-      zs = p.concatenate(rvecs[2].flatten())
-      Jxs = p.concatenate(Jvecs[0].flatten())
-      Jys = p.concatenate(Jvecs[1].flatten())
-      Jzs = p.concatenate(Jvecs[2].flatten())
-      dlavs = p.concatenate(dvecs.flatten())
+      xs = np.concatenate(rvecs[0].flatten())
+      ys = np.concatenate(rvecs[1].flatten())
+      zs = np.concatenate(rvecs[2].flatten())
+      Jxs = np.concatenate(Jvecs[0].flatten())
+      Jys = np.concatenate(Jvecs[1].flatten())
+      Jzs = np.concatenate(Jvecs[2].flatten())
+      dlavs = np.concatenate(dvecs.flatten())
    else:
       xs = rvecs[0].flatten()
       ys = rvecs[1].flatten()
@@ -181,15 +181,15 @@ def bs_cart(rvecs, Jvecs, dvecs, observs):
    obs_zs = observs[2].flatten()
 
    # get number of observatories
-   nobs = p.size(obs_xs)
+   nobs = np.size(obs_xs)
 
 
    # pre-allocate output arrays
    # NOTE: these are flattened for now, we will reshape them to match
    #       observs on exit
-   dBxs = p.zeros(obs_xs.shape)
-   dBys = p.zeros(obs_ys.shape)
-   dBzs = p.zeros(obs_zs.shape)
+   dBxs = np.zeros(obs_xs.shape)
+   dBys = np.zeros(obs_ys.shape)
+   dBzs = np.zeros(obs_zs.shape)
 
 
    #############################################################################
@@ -224,18 +224,18 @@ def bs_cart(rvecs, Jvecs, dvecs, observs):
    ## dys = obs_ys.reshape(1,obs_ys.size) - ys.reshape(ys.size,1)
    ## dzs = obs_zs.reshape(1,obs_zs.size) - zs.reshape(zs.size,1)
    ##
-   ## #dr3 = p.sqrt(dxs**2 + dys**2 + dzs**2)**3
-   ## dr = p.sqrt(dxs*dxs + dys*dys + dzs*dzs)
+   ## #dr3 = np.sqrt(dxs**2 + dys**2 + dzs**2)**3
+   ## dr = np.sqrt(dxs*dxs + dys*dys + dzs*dzs)
    ## dr3 = dr * dr * dr
    ##
    ##
-   ## dBxs = 1e-7 * p.nansum( (Jys.reshape(Jys.size,1) * dzs -
+   ## dBxs = 1e-7 * np.nansum( (Jys.reshape(Jys.size,1) * dzs -
    ##                          Jzs.reshape(Jzs.size,1) * dys) /
    ##                         dr3 * dlavs.reshape(dlavs.size,1), axis=0).flatten()
-   ## dBys = 1e-7 * p.nansum( (Jzs.reshape(Jzs.size,1) * dxs -
+   ## dBys = 1e-7 * np.nansum( (Jzs.reshape(Jzs.size,1) * dxs -
    ##                          Jxs.reshape(Jxs.size,1) * dzs) /
    ##                         dr3 * dlavs.reshape(dlavs.size,1), axis=0).flatten()
-   ## dBzs = 1e-7 * p.nansum( (Jxs.reshape(Jxs.size,1) * dys -
+   ## dBzs = 1e-7 * np.nansum( (Jxs.reshape(Jxs.size,1) * dys -
    ##                          Jys.reshape(Jys.size,1) * dxs) /
    ##                         dr3 * dlavs.reshape(dlavs.size,1), axis=0).flatten()
    ##
@@ -251,8 +251,8 @@ def bs_cart(rvecs, Jvecs, dvecs, observs):
       dzs = obs_zs[j] - zs
 
       # cube the magnitude of displacment vector
-      #dr3 = p.sqrt(dxs**2 + dys**2 + dzs**2)**3
-      dr = p.sqrt(dxs*dxs + dys*dys + dzs*dzs)
+      #dr3 = np.sqrt(dxs**2 + dys**2 + dzs**2)**3
+      dr = np.sqrt(dxs*dxs + dys*dys + dzs*dzs)
       dr3 = dr*dr*dr # avoiding powers leads to 2-3x speed improvement
 
       # integrate to get delta_B
@@ -260,9 +260,9 @@ def bs_cart(rvecs, Jvecs, dvecs, observs):
       #       to a flux density in units of Tesla. Given there is a 4*pi normalizing
       #       constant in the Biot-Savart relationsip, we can simply use 10^-7 to
       #       produce results in Tesla.
-      dBxs[j] = 1e-7 * p.nansum( (Jys * dzs - Jzs * dys) / dr3 * dlavs)
-      dBys[j] = 1e-7 * p.nansum( (Jzs * dxs - Jxs * dzs) / dr3 * dlavs)
-      dBzs[j] = 1e-7 * p.nansum( (Jxs * dys - Jys * dxs) / dr3 * dlavs)
+      dBxs[j] = 1e-7 * np.nansum( (Jys * dzs - Jzs * dys) / dr3 * dlavs)
+      dBys[j] = 1e-7 * np.nansum( (Jzs * dxs - Jxs * dzs) / dr3 * dlavs)
+      dBzs[j] = 1e-7 * np.nansum( (Jxs * dys - Jys * dxs) / dr3 * dlavs)
 
 
    return (dBxs.reshape(observs[0].shape),
@@ -348,12 +348,12 @@ def bs_sphere(rvecs, Jvecs, dvecs, observs):
    # check first required input parameter
    if not(len(rvecs) == 3):
       raise Exception('1st input must contain 3 items')
-   elif all([p.isscalar(rvecs[i]) for i in range(3)]):
+   elif all([np.isscalar(rvecs[i]) for i in range(3)]):
       # convert scalars to 0-rank arrays
-      rvecs[0] = p.array(rvecs[0])
-      rvecs[1] = p.array(rvecs[1])
-      rvecs[2] = p.array(rvecs[2])
-   elif not(all([type(rvecs[i]) is p.ndarray for i in range(3)])):
+      rvecs[0] = np.array(rvecs[0])
+      rvecs[1] = np.array(rvecs[1])
+      rvecs[2] = np.array(rvecs[2])
+   elif not(all([type(rvecs[i]) is np.ndarray for i in range(3)])):
       raise Exception('1st input must hold all scalars or all ndarrays')
    elif not(rvecs[0].shape == rvecs[1].shape and
             rvecs[0].shape == rvecs[2].shape):
@@ -370,12 +370,12 @@ def bs_sphere(rvecs, Jvecs, dvecs, observs):
    # check second required input parameter
    if not(len(Jvecs) == 3):
       raise Exception('1st input must contain 3 items')
-   elif all([p.isscalar(Jvecs[i]) for i in range(3)]):
+   elif all([np.isscalar(Jvecs[i]) for i in range(3)]):
       # convert scalars to 0-rank arrays
-      Jvecs[0] = p.array(Jvecs[0])
-      Jvecs[1] = p.array(Jvecs[1])
-      Jvecs[2] = p.array(Jvecs[2])
-   elif not(all([type(Jvecs[i]) is p.ndarray for i in range(3)])):
+      Jvecs[0] = np.array(Jvecs[0])
+      Jvecs[1] = np.array(Jvecs[1])
+      Jvecs[2] = np.array(Jvecs[2])
+   elif not(all([type(Jvecs[i]) is np.ndarray for i in range(3)])):
       raise Exception('2nd input must hold all scalars or all ndarrays')
    elif not(Jvecs[0].shape == Jvecs[1].shape and
             Jvecs[0].shape == Jvecs[2].shape):
@@ -391,10 +391,10 @@ def bs_sphere(rvecs, Jvecs, dvecs, observs):
 
 
    # check third required input parameter
-   if p.isscalar(dvecs):
+   if np.isscalar(dvecs):
       # convert scalar to 0-rank array
-      dvecs = p.array(dvecs)
-   elif not(type(dvecs) is p.ndarray):
+      dvecs = np.array(dvecs)
+   elif not(type(dvecs) is np.ndarray):
       raise Exception('3rd input must be a scalar or ndarray')
 
    if dvecs.dtype == object:
@@ -414,12 +414,12 @@ def bs_sphere(rvecs, Jvecs, dvecs, observs):
    # check fourth required input parameter
    if not(len(observs) == 3):
       raise Exception('4th input must contain 3 items')
-   elif all([p.isscalar(observs[i]) for i in range(3)]):
+   elif all([np.isscalar(observs[i]) for i in range(3)]):
       # convert scalars to 0-rank arrays
-      observs[0] = p.array(observs[0])
-      observs[1] = p.array(observs[1])
-      observs[2] = p.array(observs[2])
-   elif not(all([type(observs[i]) is p.ndarray for i in range(3)])):
+      observs[0] = np.array(observs[0])
+      observs[1] = np.array(observs[1])
+      observs[2] = np.array(observs[2])
+   elif not(all([type(observs[i]) is np.ndarray for i in range(3)])):
       raise Exception('4th input must hold all scalars or all ndarrays')
    elif not(observs[0].shape == observs[1].shape and
             observs[0].shape == observs[2].shape):
@@ -441,13 +441,13 @@ def bs_sphere(rvecs, Jvecs, dvecs, observs):
    # FIXME: weird things happen with concatenate() and object arrays; it would
    #        be much more readable if we could avoid this conditional block
    if rvecs[0].dtype == object:
-      phis = p.concatenate(rvecs[0].flatten())
-      thetas = p.concatenate(rvecs[1].flatten())
-      rhos = p.concatenate(rvecs[2].flatten())
-      Jphis = p.concatenate(Jvecs[0].flatten())
-      Jthetas = p.concatenate(Jvecs[1].flatten())
-      Jrhos = p.concatenate(Jvecs[2].flatten())
-      dlavs = p.concatenate(dvecs.flatten())
+      phis = np.concatenate(rvecs[0].flatten())
+      thetas = np.concatenate(rvecs[1].flatten())
+      rhos = np.concatenate(rvecs[2].flatten())
+      Jphis = np.concatenate(Jvecs[0].flatten())
+      Jthetas = np.concatenate(Jvecs[1].flatten())
+      Jrhos = np.concatenate(Jvecs[2].flatten())
+      dlavs = np.concatenate(dvecs.flatten())
    else:
       phis = rvecs[0].flatten()
       thetas = rvecs[1].flatten()
@@ -464,7 +464,7 @@ def bs_sphere(rvecs, Jvecs, dvecs, observs):
    obs_rhos = observs[2].flatten()
 
    # get number of observatories
-   nobs = p.size(obs_phis)
+   nobs = np.size(obs_phis)
 
 
 
@@ -510,9 +510,9 @@ def bs_sphere(rvecs, Jvecs, dvecs, observs):
    ## # pre-allocate output arrays
    ## # NOTE: these are flattened for now, we will reshape them to match
    ## #       observs on exit
-   ## dBphis = p.zeros(obs_phis.shape)
-   ## dBthetas = p.zeros(obs_thetas.shape)
-   ## dBrhos = p.zeros(obs_rhos.shape)
+   ## dBphis = np.zeros(obs_phis.shape)
+   ## dBthetas = np.zeros(obs_thetas.shape)
+   ## dBrhos = np.zeros(obs_rhos.shape)
    ##
    ##
    ##
@@ -526,29 +526,29 @@ def bs_sphere(rvecs, Jvecs, dvecs, observs):
    ##    # NOTE: we don't actually create the full matrix, or multiply by it; this
    ##    # is probably somewhat inefficient, but it follows the algorithm described
    ##    # by K&R(1977) exactly...it probably doesn't lose too much efficiency.
-   ##    a11 = (p.sin(obs_thetas[j]) * p.sin(thetas) * p.cos(obs_phis[j] - phis) +
-   ##           p.cos(obs_thetas[j]) * p.cos(thetas))
-   ##    a12 = (p.sin(obs_thetas[j]) * p.cos(thetas) * p.cos(obs_phis[j] - phis) -
-   ##           p.cos(obs_thetas[j]) * p.sin(thetas))
-   ##    a13 =  p.sin(obs_thetas[j]) * p.sin(obs_phis[j] - phis)
-   ##    a21 = (p.cos(obs_thetas[j]) * p.sin(thetas) * p.cos(obs_phis[j] - phis) -
-   ##           p.sin(obs_thetas[j]) * p.cos(thetas))
-   ##    a22 = (p.cos(obs_thetas[j]) * p.cos(thetas) * p.cos(obs_phis[j] - phis) +
-   ##           p.sin(obs_thetas[j]) * p.sin(thetas))
-   ##    a23 =  p.cos(obs_thetas[j]) * p.sin(obs_phis[j] - phis)
-   ##    a31 = -p.sin(thetas) * p.sin(obs_phis[j] - phis)
-   ##    a32 = -p.cos(thetas) * p.sin(obs_phis[j] - phis)
-   ##    a33 = p.cos(obs_phis[j] - phis);
+   ##    a11 = (np.sin(obs_thetas[j]) * np.sin(thetas) * np.cos(obs_phis[j] - phis) +
+   ##           np.cos(obs_thetas[j]) * np.cos(thetas))
+   ##    a12 = (np.sin(obs_thetas[j]) * np.cos(thetas) * np.cos(obs_phis[j] - phis) -
+   ##           np.cos(obs_thetas[j]) * np.sin(thetas))
+   ##    a13 =  np.sin(obs_thetas[j]) * np.sin(obs_phis[j] - phis)
+   ##    a21 = (np.cos(obs_thetas[j]) * np.sin(thetas) * np.cos(obs_phis[j] - phis) -
+   ##           np.sin(obs_thetas[j]) * np.cos(thetas))
+   ##    a22 = (np.cos(obs_thetas[j]) * np.cos(thetas) * np.cos(obs_phis[j] - phis) +
+   ##           np.sin(obs_thetas[j]) * np.sin(thetas))
+   ##    a23 =  np.cos(obs_thetas[j]) * np.sin(obs_phis[j] - phis)
+   ##    a31 = -np.sin(thetas) * np.sin(obs_phis[j] - phis)
+   ##    a32 = -np.cos(thetas) * np.sin(obs_phis[j] - phis)
+   ##    a33 = np.cos(obs_phis[j] - phis);
    ##
    ##
    ##    # create rotation matrix elements k_{ij}
-   ##    invRmag = 1 / p.sqrt(rhos**2 + obs_rhos[j]**2 - 2 * rhos * obs_rhos[j] * a11)
+   ##    invRmag = 1 / np.sqrt(rhos**2 + obs_rhos[j]**2 - 2 * rhos * obs_rhos[j] * a11)
    ##
    ##    # if Rmag==zero, invRmag==Inf...assume magnetic field cancels within the
    ##    # volume, just like at the center of a wire with uniform current
-   ##    invRmag[p.isinf(invRmag)] = 0;
+   ##    invRmag[np.isinf(invRmag)] = 0;
    ##
-   ##    k11 = invRmag**3 * p.zeros(p.size(a11));
+   ##    k11 = invRmag**3 * np.zeros(np.size(a11));
    ##    k12 = invRmag**3 * rhos * a13;
    ##    k13 = invRmag**3 * -rhos * a12;
    ##    k21 = invRmag**3 * obs_rhos[j] * a31;
@@ -564,13 +564,13 @@ def bs_sphere(rvecs, Jvecs, dvecs, observs):
    ##    #       to a flux density in units of Tesla. Given there is a 4*pi normalizing
    ##    #       constant in the Biot-Savart relationsip, we can simply use 10^-7 to
    ##    #       produce results in Tesla.
-   ##    dBrhos[j]   = dBrhos[j] +   1e-7 * p.nansum((k11 * Jrhos +
+   ##    dBrhos[j]   = dBrhos[j] +   1e-7 * np.nansum((k11 * Jrhos +
    ##                                                 k12 * Jthetas +
    ##                                                 k13 * Jphis) * dlavs)
-   ##    dBthetas[j] = dBthetas[j] + 1e-7 * p.nansum((k21 * Jrhos +
+   ##    dBthetas[j] = dBthetas[j] + 1e-7 * np.nansum((k21 * Jrhos +
    ##                                                 k22 * Jthetas +
    ##                                                 k23 * Jphis) * dlavs)
-   ##    dBphis[j]   = dBphis[j] +   1e-7 * p.nansum((k31 * Jrhos +
+   ##    dBphis[j]   = dBphis[j] +   1e-7 * np.nansum((k31 * Jrhos +
    ##                                                 k32 * Jthetas +
    ##                                                 k33 * Jphis) * dlavs)
    ##
@@ -598,9 +598,9 @@ def _sp2cart_pos(r):
    """
    phis, thetas, rhos = r
 
-   xs = rhos * p.sin(thetas) * p.cos(phis)
-   ys = rhos * p.sin(thetas) * p.sin(phis)
-   zs = rhos * p.cos(thetas)
+   xs = rhos * np.sin(thetas) * np.cos(phis)
+   ys = rhos * np.sin(thetas) * np.sin(phis)
+   zs = rhos * np.cos(thetas)
 
    return (xs, ys, zs)
 
@@ -612,15 +612,15 @@ def _sp2cart_dir(v, r):
    dphis, dthetas, drhos = v
    phis, thetas, rhos = r
 
-   dxs = (p.sin(thetas) * p.cos(phis) * drhos +
-          p.cos(thetas) * p.cos(phis) * dthetas -
-          p.sin(phis) * dphis)
+   dxs = (np.sin(thetas) * np.cos(phis) * drhos +
+          np.cos(thetas) * np.cos(phis) * dthetas -
+          np.sin(phis) * dphis)
 
-   dys = (p.sin(thetas) * p.sin(phis) * drhos +
-          p.cos(thetas) * p.sin(phis) * dthetas +
-          p.cos(phis) * dphis)
+   dys = (np.sin(thetas) * np.sin(phis) * drhos +
+          np.cos(thetas) * np.sin(phis) * dthetas +
+          np.cos(phis) * dphis)
 
-   dzs = (p.cos(thetas) * drhos - p.sin(thetas) * dthetas)
+   dzs = (np.cos(thetas) * drhos - np.sin(thetas) * dthetas)
 
 
    return (dxs, dys, dzs)
@@ -633,17 +633,17 @@ def _cart2sp_pos(r):
    xs, ys, zs = r
 
    # use arctan2
-   phis = p.arctan2(ys, xs)
+   phis = np.arctan2(ys, xs)
 
    # first determine cylindrical radius, or else we won't be able to
    # get a reasonable theta if/when rsph is zero
-   rhos = p.sqrt(xs**2 + ys**2)
+   rhos = np.sqrt(xs**2 + ys**2)
 
    # calculate thetas
-   thetas = p.arctan2(rhos,zs)
+   thetas = np.arctan2(rhos,zs)
 
    # now, calculate spherical radius
-   rhos = p.sqrt(rhos**2 + zs**2)
+   rhos = np.sqrt(rhos**2 + zs**2)
 
 
    return (phis, thetas, rhos)
@@ -659,15 +659,15 @@ def _cart2sp_dir(v, r):
    # first, find position vectors in spherical coordinates
    (phis, thetas, rhos) = _cart2sp_pos((xs, ys, zs))
 
-   drhos = (p.sin(thetas) * p.cos(phis) * dxs +
-            p.sin(thetas) * p.sin(phis) * dys +
-            p.cos(thetas) * dzs)
+   drhos = (np.sin(thetas) * np.cos(phis) * dxs +
+            np.sin(thetas) * np.sin(phis) * dys +
+            np.cos(thetas) * dzs)
 
-   dthetas = (p.cos(thetas) * p.cos(phis) * dxs +
-              p.cos(thetas) * p.sin(phis) * dys -
-              p.sin(thetas) * dzs)
+   dthetas = (np.cos(thetas) * np.cos(phis) * dxs +
+              np.cos(thetas) * np.sin(phis) * dys -
+              np.sin(thetas) * dzs)
 
-   dphis = (p.cos(phis) * dys - p.sin(phis) * dxs)
+   dphis = (np.cos(phis) * dys - np.sin(phis) * dxs)
 
 
    return (dphis, dthetas, drhos)
