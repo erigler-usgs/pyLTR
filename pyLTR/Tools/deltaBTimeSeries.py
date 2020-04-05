@@ -15,9 +15,11 @@ import numpy as n
 # Standard
 import pickle
 import scipy.io as sio
+import scipy.interpolate as sinterp
 import copy as cp
 import datetime
 #from time import sleep
+from time import perf_counter # only for rough performance profiling
 import math
 import optparse
 import os
@@ -351,6 +353,31 @@ def extractQuantities(path='./', run='',
     obs_rho = obs_rho[sortIdx]
     obs_label = obs_label[sortIdx]
 
+    """
+    FIXME FIXME FIXME FIXME
+    
+    The matrix-multiplication trick for speeding up BS calculations after the 
+    initial iteration only works if the OBS locations don't change with respect
+    to the DALECS. This is fine if extractQuantities() is called with locations
+    specified in SM coordinates, but if they are specified in GEO coordinates,
+    the locations change with each new time step (gawd, it took a long time to
+    realize this was causing problems!). One could perform BS on a dense grid
+    of OBS locations, then interpolate, but this would be extremely inefficient.
+    
+    Instead, we will interpolate all input grids to the coordinates system that
+    was specified in the call to this function. This should actually simplify
+    the logic in the main loop at the expense of some pre-processing. But we 
+    need to do a fair amount of pre-processing no matter what. Also, if we do
+    all this, we might as well make MAG a valid user input coordinate.
+    
+    I'm going to commit the latest set of changes to the code-base, along with
+    this comment block. Then I will carefully re-write nearly this entire method
+    from sratch to properly handle SM, GEO, and MAG coordinates. I will NOT
+    attempt to improve the performance of anything in the DALECS module until
+    everything is working here. Seriously, just don't do it. -EJR 4/2020
+
+    FIXME FIXME FIXME FIXME
+    """
 
     # create MIX data object
     dMIX = pyLTR.Models.MIX(path, run)
@@ -375,17 +402,29 @@ def extractQuantities(path='./', run='',
                          'Are you pointing to the correct run directory?'))
 
     # get indices to first and last desired time steps
-    index0 = 0
-    if t0:
-        for i,t in enumerate(timeRange):
-            if t0 >= t:
-                index0 = i
-    index1 = len(timeRange)
+    tmin = min(timeRange)
+    tmax = max(timeRange)
+    if t0: 
+       if t0 >= tmin and t0 <= tmax:
+          index0 = p.argmax([(t >= t0) for t in timeRange])
+       elif t0 < tmin:
+          index0 = 0
+       else:
+          index0 = -1 # t0 > tmax
+    else:
+       index0 = timeRange.index(tmin)
+
     if t1:
-        for i,t in enumerate(timeRange):
-            if t1 >= t:
-                index1 = i + 1 
-    print(( 'Extracting quantities for %d time steps.' % (index1-index0) ))
+       if t1 >= tmin and t1 <= tmax:
+         index1 = timeRange.index(tmax) - p.argmax([(t <= t1) for t in timeRange[::-1]])
+       elif t1 > tmax:
+          index1 = -1
+       else:
+          index1 = -1 - len(timeRange) # t1 < tmin
+    else:
+       index1 = timeRange.index(tmax)
+
+    print(( 'Extracting quantities for %d time steps.' % (max(index1-index0+1, 0)) ))
 
 
     # attempt to create corresponding TIEGCM data object; 
@@ -476,12 +515,14 @@ def extractQuantities(path='./', run='',
     # the ionospheric currents read in at each time step.
     #
     DALECS = pyLTR.Physics.DALECS
-    
+    dMIX = None
     if dMIX:
+      begin = perf_counter()
       # Pre-compute MIX coordinates and DALECS for northern hemisphere
-      xN = dMIX.read('Grid X', timeRange[index0])
-      yN = dMIX.read('Grid Y', timeRange[index0])
+      xN = dMIX.read('Grid X', timeRange[index0])[:-1,:] # remove periodic boundary
+      yN = dMIX.read('Grid Y', timeRange[index0])[:-1,:] # remove periodic boundary
       thetaN = p.arctan2(yN,xN)
+      thetaN[:,0] = thetaN[:,1] # force valid thetas at the pole
       thetaN[thetaN<0] = thetaN[thetaN<0]+2*p.pi
       rN = p.sqrt(xN**2+yN**2)
       xN_dict = {'data':xN*6500e3,'name':'X','units':'m'}
@@ -494,10 +535,13 @@ def extractQuantities(path='./', run='',
       #                               ion_rho=6500e3)
       dalecs_N_ion = DALECS.dalecs((longNdict['data'], colatNdict['data']),
                                     ion_rho=6500e3, fac=False, equator=False)
+      print(perf_counter() - begin, "Generating Northern ION DALECS")
       dalecs_N_fac = DALECS.dalecs((longNdict['data'], colatNdict['data']),
                                     ion_rho=6500e3, iono=False)
+      print(perf_counter() - begin, "Generating Northern FAC DALECS")
       dalecs_N_fac = dalecs_N_fac.trim(rho_max=2.5*6500e3)
-      
+      print(perf_counter() - begin, "Trimming Northern FAC DALECS")
+
       # convert _ion and _fac DALECS to Cartesian coordinates to avoid
       # unnecessary conversions to/from spherical in the loop below
       dalecs_N_ion.cartesian()
@@ -508,6 +552,7 @@ def extractQuantities(path='./', run='',
       xS = xN
       yS = -yN
       thetaS = p.arctan2(yS,xS)
+      thetaS[:,0] = thetaS[:,1] # force valid thetas at the pole
       thetaS[thetaS<0] = thetaS[thetaS<0]+2*p.pi
       rS = p.sqrt(xS**2+yS**2)
       xS_dict = {'data':xS*6500e3,'name':'X','units':'m'}
@@ -520,38 +565,88 @@ def extractQuantities(path='./', run='',
       #                               ion_rho=6500e3)
       dalecs_S_ion = DALECS.dalecs((longSdict['data'], colatSdict['data']),
                                     ion_rho=6500e3, fac=False, equator=False)
+      print(perf_counter() - begin, "Generating Southern ION DALECS")
       dalecs_S_fac = DALECS.dalecs((longSdict['data'], colatSdict['data']),
                                     ion_rho=6500e3, iono=False)
+      print(perf_counter() - begin, "Generating Southern FAC DALECS")
       dalecs_S_fac = dalecs_S_fac.trim(rho_max=2.5*6500e3)
+      print(perf_counter() - begin, "Trimming Southern FAC DALECS")
 
       # convert _ion and _fac DALECS to Cartesian coordinates to avoid
       # unnecessary conversions to/from spherical in the loop below
       dalecs_S_ion.cartesian()
       dalecs_S_fac.cartesian()
+    
+      # preliminary weights that will be modified if there are TIEGCM data
+      mixN_weights = p.ones(xN.shape)
+      mixS_weights = p.ones(xN.shape)
 
-
+    
     if dTIEGCM:
-      # TIEGCM coordinates are magnetic latitude and longitude. They will need
-      # to be tranformed into sun-fixed SM coordinates below, but at the least,
-      # we can extract them once here. Convert to colatitude and polar angles,
-      # from degrees into radians, and turn into meshgrids for later use
-      theta_TIE_geomag, phi_TIE_geomag = p.meshgrid(
-         (90 - dTIEGCM.read('mlat', timeRange[index0])) * p.pi/180.,
-         dTIEGCM.read('mlon', timeRange[index0]) * p.pi/180.)
+    #if False:
+      # TIEGCM coordinates are (geo)magnetic latitude and longitude. They must
+      # to be tranformed and interpolated onto sun-fixed SM coordinates as they
+      # get read in loop below. Here we create DALECS using SM coordinates, and
+      # depending on whether there are any MIX data available, create linear
+      # ramp weighting functions to blend the MIX and TIEGCMG currents. 
+      begin = perf_counter()
+
+      # calculate dMIX weights
+      if dMIX:
+         mixN_theta_max = colatNdict['data'].max()
+         mixS_theta_min = colatSdict['data'].min()
       
-      # dalecs_T_all = DALECS.dalecs((phi_TIE_geomag, theta_TIE_geomag),
-      #                               ion_rho=6500e3)
-      dalecs_T_ion = DALECS.dalecs((phi_TIE_geomag, theta_TIE_geomag),
+         mixN_weights = p.ones(colatNdict['data'].shape)
+         for i,theta in enumerate(colatNdict['data'].flat):
+            mixN_weights.flat[i] = (1. if theta < (mixN_theta_max / 2) else
+                                    mixN_theta_max / theta - 1)
+         
+         mixS_weights = p.ones(colatSdict['data'].shape)
+         for i,theta in enumerate(colatSdict['data'].flat):
+            mixS_weights.flat[i] = (1. if (p.pi - theta) < ((p.pi - mixS_theta_min) / 2) else
+                                    (p.pi - mixS_theta_min) / (p.pi - theta) - 1)
+      else:
+         # these are just for calculating TIEGCM weights
+         mixN_theta_max = 0
+         mixS_theta_min = p.pi
+
+      # create meshgrid using TIEGCM coordinates, trimming periodic longitude...
+      # we pretend this is SM when we interpolate to it later on)
+      TIE_theta = (90 - dTIEGCM.read('mlat', timeRange[index0])) * p.pi/180.
+      TIE_phi = p.mod(dTIEGCM.read('mlon', timeRange[index0]) + 360, 360)[:-1] * p.pi/180.
+      theta_TIE_sm_interp, phi_TIE_sm_interp = p.meshgrid(TIE_theta, TIE_phi)
+
+      TIE_weights = p.ones(theta_TIE_sm_interp.shape)
+      for i,theta in enumerate(theta_TIE_sm_interp.flat):
+         TIE_weights.flat[i] = (
+            1 if (theta > mixN_theta_max and 
+                  theta < mixS_theta_min) 
+              else (2 * theta / mixN_theta_max - 1) 
+                 if (theta <= mixN_theta_max and 
+                     theta > mixN_theta_max / 2)
+                 else (2 * (p.pi - theta) / (p.pi - mixS_theta_min) - 1)
+                    if ((p.pi - theta) <= (p.pi - mixS_theta_min) and
+                        (p.pi - theta) > (p.pi - mixS_theta_min) / 2 )
+                    else 0
+         )
+      TIE_weights[:,0] = 0
+      TIE_weights[:,-1] = 0
+      
+      # initialize DALECS for ionosphere and field-aligned currents
+      dalecs_T_ion = DALECS.dalecs((phi_TIE_sm_interp, theta_TIE_sm_interp),
                                     ion_rho=6500e3, fac=False, equator=False)
-      dalecs_T_fac = DALECS.dalecs((phi_TIE_geomag, theta_TIE_geomag),
+      print(perf_counter() - begin, "Generating TIEGCM ION DALECS")
+      dalecs_T_fac = DALECS.dalecs((phi_TIE_sm_interp, theta_TIE_sm_interp),
                                     ion_rho=6500e3, iono=False)
+      print(perf_counter() - begin, "Generating TIEGCM FAC DALECS")
       dalecs_T_fac = dalecs_T_fac.trim(rho_max=2.5*6500e3)
+      print(perf_counter() - begin, "Trimming TIEGCM FAC DALECS")
    
       # convert to Cartesian coordinates
       dalecs_T_ion.cartesian()
       dalecs_T_fac.cartesian()
-    
-    
+        
+
     if dLFM:
         # Pre-compute static sun-fixed coordinates for magnetosphere
         xM = dLFM.read('X_grid', timeRange[index0]) # this is in cm
@@ -574,7 +669,7 @@ def extractQuantities(path='./', run='',
     t0 = timeRange[index0]
     tt = t0.timetuple() # required for serial DOY (i.e., doesn't wrap at new year)
     doy0 = tt.tm_yday + tt.tm_hour/24.0 + tt.tm_min/1440.0 + tt.tm_sec/86400.0
-    for i,time in enumerate(timeRange[index0:index1]):
+    for i,time in enumerate(timeRange[index0:index1 + 1]):
 
         # this try/except block is just to handle interrupts and to clean up
         # the progress bar if something goes wrong
@@ -727,117 +822,145 @@ def extractQuantities(path='./', run='',
 
            except:
 
-              # read the northern hemisphere MIX data
-              vals=dMIX.read('Potential '+'North'+' [V]',time)/1000.0
-              psiN_dict={'data':vals,'name':r'$\Phi$','units':r'kV'}
-              vals=dMIX.read('Pedersen conductance '+'North'+' [S]',time)
-              sigmapN_dict={'data':vals,'name':r'$\Sigma_{P}$','units':r'S'}
-              vals=dMIX.read('Hall conductance '+'North'+' [S]',time)
-              sigmahN_dict={'data':vals,'name':r'$\Sigma_{H}$','units':r'S'}
-
-              # read the southern hemisphere MIX data
-              vals=dMIX.read('Potential '+'South'+' [V]',time)/1000.0
-              psiS_dict={'data':vals,'name':r'$\Phi$','units':r'kV'}
-              vals=dMIX.read('Pedersen conductance '+'South'+' [S]',time)
-              sigmapS_dict={'data':vals,'name':r'$\Sigma_{P}$','units':r'S'}
-              vals=dMIX.read('Hall conductance '+'South'+' [S]',time)
-              sigmahS_dict={'data':vals,'name':r'$\Sigma_{H}$','units':r'S'}
-
-
-              # compute the electric field vectors
-              ((phiN_dict,thetaN_dict),
-               (ephiN_dict,ethetaN_dict)) = pyLTR.Physics.MIXCalcs.efieldDict(
-                       xN_dict, yN_dict, psiN_dict, ri=6500e3)
-
-              ((phiS_dict,thetaS_dict),
-               (ephiS_dict,ethetaS_dict)) = pyLTR.Physics.MIXCalcs.efieldDict(
-                       xS_dict, yS_dict, psiS_dict, ri=6500e3, oh=True)
-
-
-              # compute total, Pedersen, and Hall ionospheric current vectors
-              ((JphiN_dict,JthetaN_dict),
-               (JpedphiN_dict,JpedthetaN_dict),
-               (JhallphiN_dict,JhallthetaN_dict)) = pyLTR.Physics.MIXCalcs.jphithetaDict(
-                          (ephiN_dict,ethetaN_dict), sigmapN_dict, sigmahN_dict, colatNdict['data'])
-
-              ((JphiS_dict,JthetaS_dict),
-               (JpedphiS_dict,JpedthetaS_dict),
-               (JhallphiS_dict,JhallthetaS_dict)) = pyLTR.Physics.MIXCalcs.jphithetaDict(
-                          (ephiS_dict,ethetaS_dict), sigmapS_dict, sigmahS_dict, colatSdict['data'])
-              
-              
-              
-              
               # Calculate LFM's DALECS current segments
               if dMIX:
+                 
+                  print()
+                  print("MIX")
+
+                  # read the northern hemisphere MIX data
+                  vals=dMIX.read('Potential '+'North'+' [V]',time)[:-1,:]/1000.0
+                  psiN_dict={'data':vals,'name':r'$\Phi$','units':r'kV'}
+                  vals=dMIX.read('Pedersen conductance '+'North'+' [S]',time)[:-1,:]
+                  sigmapN_dict={'data':vals,'name':r'$\Sigma_{P}$','units':r'S'}
+                  vals=dMIX.read('Hall conductance '+'North'+' [S]',time)[:-1,:]
+                  sigmahN_dict={'data':vals,'name':r'$\Sigma_{H}$','units':r'S'}
+
+                  # read the southern hemisphere MIX data
+                  vals=dMIX.read('Potential '+'South'+' [V]',time)[:-1,:]/1000.0
+                  psiS_dict={'data':vals,'name':r'$\Phi$','units':r'kV'}
+                  vals=dMIX.read('Pedersen conductance '+'South'+' [S]',time)[:-1,:]
+                  sigmapS_dict={'data':vals,'name':r'$\Sigma_{P}$','units':r'S'}
+                  vals=dMIX.read('Hall conductance '+'South'+' [S]',time)[:-1,:]
+                  sigmahS_dict={'data':vals,'name':r'$\Sigma_{H}$','units':r'S'}
+
+
+                  # compute the electric field vectors
+                  ((phiN_dict,thetaN_dict),
+                   (ephiN_dict,ethetaN_dict)) = pyLTR.Physics.MIXCalcs.efieldDict(
+                           xN_dict, yN_dict, psiN_dict, ri=6500e3)
+
+                  ((phiS_dict,thetaS_dict),
+                   (ephiS_dict,ethetaS_dict)) = pyLTR.Physics.MIXCalcs.efieldDict(
+                           xS_dict, yS_dict, psiS_dict, ri=6500e3, oh=True)
+
+
+                  # compute total, Pedersen, and Hall ionospheric current vectors
+                  ((JphiN_dict,JthetaN_dict),
+                   (JpedphiN_dict,JpedthetaN_dict),
+                   (JhallphiN_dict,JhallthetaN_dict)) = pyLTR.Physics.MIXCalcs.jphithetaDict(
+                           (ephiN_dict,ethetaN_dict), sigmapN_dict, sigmahN_dict, colatNdict['data'])
+
+                  ((JphiS_dict,JthetaS_dict),
+                   (JpedphiS_dict,JpedthetaS_dict),
+                   (JhallphiS_dict,JhallthetaS_dict)) = pyLTR.Physics.MIXCalcs.jphithetaDict(
+                           (ephiS_dict,ethetaS_dict), sigmapS_dict, sigmahS_dict, colatSdict['data'])
                                 
+
                   # generate Northern MIX DALECS (horizontal currents and FAC)
-                  dalecs_N_ion_tmp = dalecs_N_ion.scale(
-                     (JphiN_dict['data']/1e6, JthetaN_dict['data']/1e6)
+                  print()
+                  print("North...")
+                  begin = perf_counter()
+                  dalecs_N_ion.scale(
+                     (mixN_weights * JphiN_dict['data']/1e6, 
+                      mixN_weights * JthetaN_dict['data']/1e6)
                   )
-                  rvN_ion = dalecs_N_ion_tmp.rvecs
-                  JvN_ion = dalecs_N_ion_tmp.Jvecs
-                  dvN_ion = dalecs_N_ion_tmp.dvecs
-
-                  dalecs_N_fac_tmp = dalecs_N_fac.scale(
-                     (JphiN_dict['data']/1e6, JthetaN_dict['data']/1e6)
-                  )
-                  rvN_fac = dalecs_N_fac_tmp.rvecs
-                  JvN_fac = dalecs_N_fac_tmp.Jvecs
-                  dvN_fac = dalecs_N_fac_tmp.dvecs
-                                    
-                  
-                  # generate Southern MIX DALECS (horizontal currents and FAC)
-                  dalecs_S_ion_tmp = dalecs_S_ion.scale(
-                     (JphiS_dict['data']/1e6, JthetaS_dict['data']/1e6)
-                  )
-                  rvS_ion = dalecs_S_ion_tmp.rvecs
-                  JvS_ion = dalecs_S_ion_tmp.Jvecs
-                  dvS_ion = dalecs_S_ion_tmp.dvecs
-
-                  dalecs_S_fac_tmp = dalecs_S_fac.scale(
-                     (JphiS_dict['data']/1e6, JthetaS_dict['data']/1e6)
-                  )
-                  rvS_fac = dalecs_S_fac_tmp.rvecs
-                  JvS_fac = dalecs_S_fac_tmp.Jvecs
-                  dvS_fac = dalecs_S_fac_tmp.dvecs
-
-
-                  #
-                  # Calculate deltaBs
-                  #
-
-                  # deltaB for Northern ionospheric currents
                   (dBxN_ion,
                    dByN_ion,
-                   dBzN_ion) = DALECS.bs_cart(rvN_ion,
-                                              JvN_ion,
-                                              dvN_ion,
-                                              (obs_x,obs_y,obs_z))
-                 
-                  # # deltaB for Northern FACs
+                   dBzN_ion) = dalecs_N_ion.bs_cart((obs_x, obs_y, obs_z),
+                                                    matrix=True)
+                  
+                  dalecs_N_fac.scale(
+                     (mixN_weights * JphiN_dict['data']/1e6, 
+                      mixN_weights * JthetaN_dict['data']/1e6)
+                  )
                   (dBxN_fac,
                    dByN_fac,
-                   dBzN_fac) = DALECS.bs_cart(rvN_fac,
-                                              JvN_fac,
-                                              dvN_fac,
-                                              (obs_x,obs_y,obs_z))
-                 
-                  # deltaB for Southern ionospheric currents
+                   dBzN_fac) = dalecs_N_fac.bs_cart((obs_x, obs_y, obs_z),
+                                                    matrix=True)
+                  
+
+                  print("...done after %f seconds"%(perf_counter() - begin))
+                  
+
+                  print()
+                  print("South...")
+                  begin = perf_counter()
+                  # generate Southern MIX DALECS (horizontal currents and FAC)
+                  dalecs_S_ion.scale(
+                     (mixS_weights * JphiS_dict['data']/1e6, 
+                      mixS_weights * JthetaS_dict['data']/1e6)
+                  )
                   (dBxS_ion,
                    dByS_ion,
-                   dBzS_ion) = DALECS.bs_cart(rvS_ion,
-                                              JvS_ion,
-                                              dvS_ion,
-                                              (obs_x,obs_y,obs_z))
+                   dBzS_ion) = dalecs_S_ion.bs_cart((obs_x, obs_y, obs_z),
+                                                    matrix=True)
                   
-                  # deltaB for Southern FACs
+
+                  dalecs_S_fac.scale(
+                     (mixS_weights * JphiS_dict['data']/1e6, 
+                      mixS_weights * JthetaS_dict['data']/1e6)
+                  )
                   (dBxS_fac,
                    dByS_fac,
-                   dBzS_fac) = DALECS.bs_cart(rvS_fac,
-                                              JvS_fac,
-                                              dvS_fac,
-                                              (obs_x,obs_y,obs_z))
+                   dBzS_fac) = dalecs_S_fac.bs_cart((obs_x, obs_y, obs_z),
+                                                    matrix=True)
+                  
+
+                  print("...done after %f seconds"%(perf_counter() - begin))
+                  
+                  
+                  # #
+                  # # Calculate deltaBs
+                  # #
+                  # print()
+                  # print("MIX DeltaB")
+                  # print()
+                  # # deltaB for Northern ionospheric currents
+                  # (dBxN_ion,
+                  #  dByN_ion,
+                  #  dBzN_ion) = DALECS.bs_cart(rvN_ion,
+                  #                             JvN_ion,
+                  #                             dvN_ion,
+                  #                             (obs_x,obs_y,obs_z))
+                  # print(perf_counter() - begin, "Northern ionospheric currents Biot-Savart")
+                 
+                  # # # deltaB for Northern FACs
+                  # (dBxN_fac,
+                  #  dByN_fac,
+                  #  dBzN_fac) = DALECS.bs_cart(rvN_fac,
+                  #                             JvN_fac,
+                  #                             dvN_fac,
+                  #                             (obs_x,obs_y,obs_z))
+                  # print(perf_counter() - begin, "Northern field-aligned currents Biot-Savart")
+                 
+                  # # deltaB for Southern ionospheric currents
+                  # (dBxS_ion,
+                  #  dByS_ion,
+                  #  dBzS_ion) = DALECS.bs_cart(rvS_ion,
+                  #                             JvS_ion,
+                  #                             dvS_ion,
+                  #                             (obs_x,obs_y,obs_z))
+                  # print(perf_counter() - begin, "Southern ionospheric currents Biot-Savart")
+                  
+                  # # deltaB for Southern FACs
+                  # (dBxS_fac,
+                  #  dByS_fac,
+                  #  dBzS_fac) = DALECS.bs_cart(rvS_fac,
+                  #                             JvS_fac,
+                  #                             dvS_fac,
+                  #                             (obs_x,obs_y,obs_z))
+                  # print(perf_counter() - begin, "Southern field-aligned currents Biot-Savart")
 
               else:
 
@@ -859,99 +982,190 @@ def extractQuantities(path='./', run='',
 
 
               if dTIEGCM:
-                  
+              #if False:
+                      
+                  print()
+                  print("TIEGCM")
+                  begin = perf_counter()
                   # retrieve TIEGCM currents in geomagnetic coordinates
-                  Jphi_TIE_geomag = dTIEGCM.read('KQPHI', time).T.copy()
-                  Jtheta_TIE_geomag = -dTIEGCM.read('KQLAM', time).T.copy()
-
-                  # zero-out low and high colatitudes, where we trust MIX more
-                  # FIXME: detect {min,max} MIX thetas, not hardcode {60,120};
-                  #        also, should "blend" MIX and TIEGCM at mid-colats
-                  print("Discarding ", 
-                    (theta_TIE_geomag < (60 * p.pi/180.)).sum() +
-                    (theta_TIE_geomag > (120 * p.pi/180.)).sum(),
-                    " of ", theta_TIE_geomag.size,
-                    "TIEGCM points outside +/- 30 degrees lat.")
-                  Jphi_TIE_geomag[theta_TIE_geomag < (60 * p.pi/180)] = 0
-                  Jphi_TIE_geomag[theta_TIE_geomag > (120 * p.pi/180)] = 0
-                  Jtheta_TIE_geomag[theta_TIE_geomag < (60 * p.pi/180)] = 0
-                  Jtheta_TIE_geomag[theta_TIE_geomag > (120 * p.pi/180)] = 0
-
-                  # generate TIEGCM DALECS (horizontal currents and FAC)
-                  dalecs_T_ion_tmp = dalecs_T_ion.scale(
-                     (Jphi_TIE_geomag, Jtheta_TIE_geomag)
-                  )
-                  rvT_ion = dalecs_T_ion_tmp.rvecs
-                  JvT_ion = dalecs_T_ion_tmp.Jvecs
-                  dvT_ion = dalecs_T_ion_tmp.dvecs
-
-                  dalecs_T_fac_tmp = dalecs_T_fac.scale(
-                     (Jphi_TIE_geomag, Jtheta_TIE_geomag)
-                  )
-                  rvT_fac = dalecs_T_fac_tmp.rvecs
-                  JvT_fac = dalecs_T_fac_tmp.Jvecs
-                  dvT_fac = dalecs_T_fac_tmp.dvecs
-
+                  phi_TIE_geomag = phi_TIE_sm_interp # don't re-read static coords
+                  theta_TIE_geomag = theta_TIE_sm_interp # don'd re-read static coords
+                  rho_TIE_geomag = p.full(phi_TIE_sm_interp.shape, 6500e3)
+                  Jphi_TIE_geomag = dTIEGCM.read('KQPHI', time).T.copy()[:-1,:]
+                  Jtheta_TIE_geomag = -dTIEGCM.read('KQLAM', time).T.copy()[:-1,:]
+                  Jrho_TIE_geomag = p.full(Jphi_TIE_geomag.shape, 0)
                   
-                  # rotate magnetic coordinates into SM before calling bs_cart()
-                  for j in range(len(rvT_ion[0].flat)):
-                    
-                    # horizontal ionospheric currents
-                    (rvT_ion[0].flat[j],
-                     rvT_ion[1].flat[j],
-                     rvT_ion[2].flat[j]) = pyLTR.transform.MAGtoSM(
-                       rvT_ion[0].flat[j], 
-                       rvT_ion[1].flat[j],
-                       rvT_ion[2].flat[j],
-                       time
-                    )
-                    (JvT_ion[0].flat[j],
-                     JvT_ion[1].flat[j],
-                     JvT_ion[2].flat[j]) = pyLTR.transform.MAGtoSM(
-                       JvT_ion[0].flat[j], 
-                       JvT_ion[1].flat[j],
-                       JvT_ion[2].flat[j],
-                       time
-                    )
-                    
-                    # field-aligned currents
-                    (rvT_fac[0].flat[j],
-                     rvT_fac[1].flat[j],
-                     rvT_fac[2].flat[j]) = pyLTR.transform.MAGtoSM(
-                       rvT_fac[0].flat[j], 
-                       rvT_fac[1].flat[j],
-                       rvT_fac[2].flat[j],
-                       time
-                    )
-                    (JvT_fac[0].flat[j],
-                     JvT_fac[1].flat[j],
-                     JvT_fac[2].flat[j]) = pyLTR.transform.MAGtoSM(
-                       JvT_fac[0].flat[j], 
-                       JvT_fac[1].flat[j],
-                       JvT_fac[2].flat[j],
-                       time
-                    )
-                  
+                  # convert to Cartesian coordinates to rotate
+                  (x_TIE_geomag,
+                   y_TIE_geomag,
+                   z_TIE_geomag,
+                   Jx_TIE_geomag,
+                   Jy_TIE_geomag,
+                   Jz_TIE_geomag) = pyLTR.transform.SPHtoCAR(
+                      phi_TIE_geomag, theta_TIE_geomag, rho_TIE_geomag,
+                      Jphi_TIE_geomag, Jtheta_TIE_geomag, Jrho_TIE_geomag
+                  )
 
-                  # deltaB for TIEGCM horizontal ionospheric currents
+                  # rotate locations and currents into SM
+                  (x_TIE_sm,
+                   y_TIE_sm,
+                   z_TIE_sm) = pyLTR.transform.MAGtoSM(
+                      x_TIE_geomag, y_TIE_geomag, z_TIE_geomag, time
+                  )
+                  (Jx_TIE_sm,
+                   Jy_TIE_sm,
+                   Jz_TIE_sm) = pyLTR.transform.MAGtoSM(
+                      Jx_TIE_geomag, Jy_TIE_geomag, Jz_TIE_geomag, time
+                  )
+
+                  # convert back to spherical
+                  (phi_TIE_sm, 
+                   theta_TIE_sm, 
+                   rho_TIE_sm, 
+                   Jphi_TIE_sm,
+                   Jtheta_TIE_sm,
+                   Jrho_TIE_sm) = pyLTR.transform.CARtoSPH(
+                      x_TIE_sm, y_TIE_sm, z_TIE_sm,
+                      Jx_TIE_sm, Jy_TIE_sm, Jz_TIE_sm
+                  )
+                  
+                  # finally, interpolate onto fixed SM grid
+
+                  # add 2*pi to smallest phi, concatenate to end;
+                  # subtract 2*pi from largest phi, concatenate to begining;
+                  # this ensures that there are no gaps in the periodic grid to
+                  # to be interpolated
+                  small_idx = phi_TIE_sm[:,0].argmin()
+                  large_idx = phi_TIE_sm[:,0].argmax()
+                  phi_TIE_sm = p.vstack(
+                     (phi_TIE_sm[large_idx,:] - 2*p.pi, phi_TIE_sm, phi_TIE_sm[small_idx,:] + 2*p.pi)
+                  )
+                  theta_TIE_sm = p.vstack(
+                     (theta_TIE_sm[large_idx,:], theta_TIE_sm, theta_TIE_sm[small_idx,:])
+                  )
+                  rho_TIE_sm = p.vstack(
+                     (rho_TIE_sm[large_idx,:], rho_TIE_sm, rho_TIE_sm[small_idx,:])
+                  )
+                  Jphi_TIE_sm = p.vstack(
+                     (Jphi_TIE_sm[large_idx,:], Jphi_TIE_sm, Jphi_TIE_sm[small_idx,:])
+                  )
+                  Jtheta_TIE_sm = p.vstack(
+                     (Jtheta_TIE_sm[large_idx,:], Jtheta_TIE_sm, Jtheta_TIE_sm[small_idx,:])
+                  )
+
+                  Jphi_TIE_sm_interp = sinterp.griddata(
+                     (phi_TIE_sm.reshape(-1),
+                      theta_TIE_sm.reshape(-1)),
+                     Jphi_TIE_sm.reshape(-1),
+                     (phi_TIE_sm_interp.reshape(-1), 
+                      theta_TIE_sm_interp.reshape(-1))
+                  ).reshape(phi_TIE_sm_interp.shape)
+                  
+                  Jtheta_TIE_sm_interp = sinterp.griddata(
+                     (phi_TIE_sm.reshape(-1),
+                      theta_TIE_sm.reshape(-1)),
+                     Jtheta_TIE_sm.reshape(-1),
+                     (phi_TIE_sm_interp.reshape(-1), 
+                      theta_TIE_sm_interp.reshape(-1))
+                  ).reshape(theta_TIE_sm_interp.shape)
+ 
+
+                  # scale TIEGCM DALECS (horizontal currents and FAC) and
+                  # integrate Biot-Savart equation at obs locations
+
+                  # THIS MATRIX=TRUE "TRICK" DOES NOT SEEM TO WORK...IF I
+                  # RECALCULATE THE MATRIX EACH TIME, EVERYTHING LINES UP,
+                  # BUT WHEN I RE-USE THE MATRIX WITH NEW IONOSPHERIC CURRENTS,
+                  # THEY DO NOT. THIS SHOULD NOT BE MATHEMATICALLY POSSIBLE,
+                  # SO THERE IS SOMETHING WRONG/INCONSISTENT WITH MY ACTUAL
+                  # IMPLEMNTATION!
+
+                  begin = perf_counter()
+                  dalecs_T_ion.scale(
+                     (TIE_weights * Jphi_TIE_sm_interp, 
+                      TIE_weights * Jtheta_TIE_sm_interp)
+                  )
                   (dBxTIE_ion,
                    dByTIE_ion,
-                   dBzTIE_ion) = DALECS.bs_cart(rvT_ion,
-                                                JvT_ion,
-                                                dvT_ion,
-                                                (obs_x,obs_y,obs_z))
-                  
-                  # deltaB for TIEGCM FACs
+                   dBzTIE_ion) = dalecs_T_ion.bs_cart((obs_x, obs_y, obs_z),
+                                                      matrix=True)
+                                    
+                  dalecs_T_fac.scale(
+                     (TIE_weights * Jphi_TIE_sm_interp, 
+                      TIE_weights * Jtheta_TIE_sm_interp)
+                  )
                   (dBxTIE_fac,
                    dByTIE_fac,
-                   dBzTIE_fac) = DALECS.bs_cart(rvT_fac,
-                                                JvT_fac,
-                                                dvT_fac,
-                                                (obs_x,obs_y,obs_z))
+                   dBzTIE_fac) = dalecs_T_fac.bs_cart((obs_x, obs_y, obs_z),
+                                                      matrix=True)
+
+
+                  print("...done after %f seconds"%(perf_counter() - begin))
+
+                  # # rotate magnetic coordinates into SM before calling bs_cart()
+                  # for j in range(len(rvT_ion[0].flat)):
+                    
+                  #   # horizontal ionospheric currents
+                  #   (rvT_ion[0].flat[j],
+                  #    rvT_ion[1].flat[j],
+                  #    rvT_ion[2].flat[j]) = pyLTR.transform.MAGtoSM(
+                  #      rvT_ion[0].flat[j], 
+                  #      rvT_ion[1].flat[j],
+                  #      rvT_ion[2].flat[j],
+                  #      time
+                  #   )
+                  #   (JvT_ion[0].flat[j],
+                  #    JvT_ion[1].flat[j],
+                  #    JvT_ion[2].flat[j]) = pyLTR.transform.MAGtoSM(
+                  #      JvT_ion[0].flat[j], 
+                  #      JvT_ion[1].flat[j],
+                  #      JvT_ion[2].flat[j],
+                  #      time
+                  #   )
+                    
+                  #   # field-aligned currents
+                  #   (rvT_fac[0].flat[j],
+                  #    rvT_fac[1].flat[j],
+                  #    rvT_fac[2].flat[j]) = pyLTR.transform.MAGtoSM(
+                  #      rvT_fac[0].flat[j], 
+                  #      rvT_fac[1].flat[j],
+                  #      rvT_fac[2].flat[j],
+                  #      time
+                  #   )
+                  #   (JvT_fac[0].flat[j],
+                  #    JvT_fac[1].flat[j],
+                  #    JvT_fac[2].flat[j]) = pyLTR.transform.MAGtoSM(
+                  #      JvT_fac[0].flat[j], 
+                  #      JvT_fac[1].flat[j],
+                  #      JvT_fac[2].flat[j],
+                  #      time
+                  #   )
+                  # print(perf_counter() - begin, "Rotating TIEGCM currents into SM coordinates")
                   
-                  dBxTIE_fac = dBxTIE_fac * 0
-                  dByTIE_fac = dByTIE_fac * 0
-                  dBzTIE_fac = dBzTIE_fac * 0
+                  # print()
+                  # print("TIEGCM DeltaB")
+                  # print()
+                  # # deltaB for TIEGCM horizontal ionospheric currents
+                  # (dBxTIE_ion,
+                  #  dByTIE_ion,
+                  #  dBzTIE_ion) = DALECS.bs_cart(rvT_ion,
+                  #                               JvT_ion,
+                  #                               dvT_ion,
+                  #                               (obs_x,obs_y,obs_z))
+                  # print(perf_counter() - begin, "TIEGCM ionospheric currents Biot-Savart")
+                  
+                  # # deltaB for TIEGCM FACs
+                  # (dBxTIE_fac,
+                  #  dByTIE_fac,
+                  #  dBzTIE_fac) = DALECS.bs_cart(rvT_fac,
+                  #                               JvT_fac,
+                  #                               dvT_fac,
+                  #                               (obs_x,obs_y,obs_z))
+                  # print(perf_counter() - begin, "TIEGCM field-aligned currents Biot-Savart")
+                  
+                  # dBxTIE_fac = dBxTIE_fac * 0
+                  # dByTIE_fac = dByTIE_fac * 0
+                  # dBzTIE_fac = dBzTIE_fac * 0
 
               else:
                   
@@ -965,12 +1179,14 @@ def extractQuantities(path='./', run='',
 
 
               if dLFM:
-                  
+                  print()
+                  print("LFM")
+                  begin = perf_counter()
                   # finally, retrieve magnetospheric currents from LFM file,
                   # convert to spherical coordinates, and calculate deltaB
-                  BxM = dLFM.read('bx_', trLFM[index0:index1][i]) # this is in G
-                  ByM = dLFM.read('by_', trLFM[index0:index1][i]) # this is in G
-                  BzM = dLFM.read('bz_', trLFM[index0:index1][i]) # this is in G
+                  BxM = dLFM.read('bx_', trLFM[index0:index1 + 1][i]) # this is in G
+                  ByM = dLFM.read('by_', trLFM[index0:index1 + 1][i]) # this is in G
+                  BzM = dLFM.read('bz_', trLFM[index0:index1 + 1][i]) # this is in G
                   JxM, JyM, JzM = pyLTR.Physics.LFMCurrent(
                     hgridcc, BxM, ByM, BzM, rion=1) # ...should be A/m^2 given default input units
                   
@@ -982,6 +1198,7 @@ def extractQuantities(path='./', run='',
                       dVM,
                       (obs_x,obs_y,obs_z)
                    )
+                  print("...done after %f seconds"%(perf_counter() - begin))
               else:
                   
                   # set dBs to zero if no LFM data is available
@@ -1065,7 +1282,44 @@ def extractQuantities(path='./', run='',
                     x, y, z, dx, dy, dz
                  )
 
-                    
+              else:
+
+                 # convert north ION contribution from Cartesian to spherical coordinates
+                 _, _, _, dBphiN_ion, dBthetaN_ion, dBrhoN_ion = pyLTR.transform.CARtoSPH(
+                     obs_x, obs_y, obs_z, dBxN_ion, dByN_ion, dBzN_ion
+                 )
+
+                 # convert north FAC contribution from Cartesian to spherical coordinates
+                 _, _, _, dBphiN_fac, dBthetaN_fac, dBrhoN_fac = pyLTR.transform.CARtoSPH(
+                     obs_x, obs_y, obs_z, dBxN_fac, dByN_fac, dBzN_fac
+                 )
+
+                 # convert south ION contribution from Cartesian to spherical coordinates
+                 _, _, _, dBphiS_ion, dBthetaS_ion, dBrhoS_ion = pyLTR.transform.CARtoSPH(
+                     obs_x, obs_y, obs_z, dBxS_ion, dByS_ion, dBzS_ion
+                 )
+
+                 # convert south FAC contribution from Cartesian to spherical coordinates
+                 _, _, _, dBphiS_fac, dBthetaS_fac, dBrhoS_fac = pyLTR.transform.CARtoSPH(
+                     obs_x, obs_y, obs_z, dBxS_fac, dByS_fac, dBzS_fac
+                 )
+
+                 # convert TIEGCM ION contribution from Cartesian to spherical coordinates
+                 _, _, _, dBphiTIE_ion, dBthetaTIE_ion, dBrhoTIE_ion = pyLTR.transform.CARtoSPH(
+                     obs_x, obs_y, obs_z, dBxTIE_ion, dByTIE_ion, dBzTIE_ion
+                 )
+
+                 # convert TIEGCM FAC contribution from Cartesian to spherical coordinates
+                 _, _, _, dBphiTIE_fac, dBthetaTIE_fac, dBrhoTIE_fac = pyLTR.transform.CARtoSPH(
+                     obs_x, obs_y, obs_z, dBxTIE_fac, dByTIE_fac, dBzTIE_fac
+                 )
+                 
+                 
+                 # convert magnetospheric contribution from Cartesian to spherical coordinates
+                 _, _, _, dBphi_mag, dBtheta_mag, dBrho_fac = pyLTR.transform.CARtoSPH(
+                     obs_x, obs_y, obs_z, dBx_mag, dBy_mag, dBz_mag
+                 )
+                                     
 
               
               # combine dBs into lists of dicts, then dump to binary file

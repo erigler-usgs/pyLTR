@@ -56,7 +56,8 @@ def SPHtoCAR(phi,theta,rho,dphi=None,dtheta=None,drho=None):
          ## Note:  vectorize()'s doc string states that this is not very speed
          ##        optimized...Geopack should be ported to Python, or re-written
          ##        to accept array inputs, if speed is an issue. -EJR 10/2013
-         ##
+         ## Note:  some f2py results result in 6 outputs, while result in 7;
+         ##        this is one of the latter, thus `otypes=[float]*7`
          #output = pyLTR.transform.geopack_08.sphcar_08(rho,theta,phi,0.,0.,0., iSPHtoCAR)
          v_gp08 = p.vectorize(pyLTR.transform.geopack_08.sphcar_08,
                         otypes=[float]*7)
@@ -79,7 +80,8 @@ def SPHtoCAR(phi,theta,rho,dphi=None,dtheta=None,drho=None):
       ## Note:  vectorize()'s doc string states that this is not very speed
       ##        optimized...Geopack should be ported to Python, or re-written
       ##        to accept array inputs, if speed is an issue. -EJR 10/2013
-      ##
+      ## Note:  some f2py results result in 6 outputs, while result in 7;
+      ##        this is one of the latter, thus `otypes=[float]*7`
       
       #output = pyLTR.transform.geopack_08.sphcar_08(rho,theta,phi,0.,0.,0., iSPHtoCAR)
       v_gp08a = p.vectorize(pyLTR.transform.geopack_08.sphcar_08,
@@ -119,7 +121,8 @@ def CARtoSPH(x,y,z,dx=None,dy=None,dz=None):
          ## Note:  vectorize()'s doc string states that this is not very speed
          ##        optimized...Geopack should be ported to Python, or re-written
          ##        to accept array inputs, if speed is an issue. -EJR 10/2013
-         ##
+         ## Note:  some f2py results result in 6 outputs, while result in 7;
+         ##        this is one of the latter, thus `otypes=[float]*7`
          #output = pyLTR.transform.geopack_08.sphcar_08(0.,0.,0.,x,y,z, iSPHtoCAR)
          v_gp08 = p.vectorize(pyLTR.transform.geopack_08.sphcar_08,
                         otypes=[float]*7)
@@ -142,8 +145,8 @@ def CARtoSPH(x,y,z,dx=None,dy=None,dz=None):
       ## Note:  vectorize()'s doc string states that this is not very speed
       ##        optimized...Geopack should be ported to Python, or re-written
       ##        to accept array inputs, if speed is an issue. -EJR 10/2013
-      ##
-      
+      ## Note:  some f2py results result in 6 outputs, while result in 7;
+      ##        this is one of the latter, thus `otypes=[float]*7`
       #output = pyLTR.transform.geopack_08.sphcar_08(0.,0.,0.,x,y,z, iSPHtoCAR)
       v_gp08a = p.vectorize(pyLTR.transform.geopack_08.sphcar_08,
                         otypes=[float]*7)
@@ -188,7 +191,8 @@ def SMtoGSM(x,y,z, dateTime):
         ## Note:  vectorize()'s doc string states that this is not very speed
         ##        optimized...Geopack should be ported to Python, or re-written
         ##        to accept array inputs, if speed is an issue. -EJR 10/2013
-        ##
+        ## Note:  some f2py results result in 6 outputs, while result in 7;
+        ##        this is one of the latter, thus `otypes=[float]*6`
         #output = pyLTR.transform.geopack_08.smgsw_08(x,y,z, 0.,0.,0., iSMtoGSM)
         v_gp08 = p.vectorize(pyLTR.transform.geopack_08.smgsw_08,
                         otypes=[float]*6)
@@ -228,7 +232,8 @@ def GSMtoSM(x,y,z, dateTime):
         ## Note:  vectorize()'s doc string states that this is not very speed
         ##        optimized...Geopack should be ported to Python, or re-written
         ##        to accept array inputs, if speed is an issue. -EJR 10/2013
-        ##
+        ## Note:  some f2py results result in 6 outputs, while result in 7;
+        ##        this is one of the latter, thus `otypes=[float]*6`
         #output = pyLTR.transform.geopack_08.smgsw_08(0.,0.,0., x, y, z, iSMtoGSM)
         v_gp08 = p.vectorize(pyLTR.transform.geopack_08.smgsw_08,
                         otypes=[float]*6)
@@ -267,7 +272,8 @@ def GSEtoGSM(x,y,z, dateTime):
         ## Note:  vectorize()'s doc string states that this is not very speed
         ##        optimized...Geopack should be ported to Python, or re-written
         ##        to accept array inputs, if speed is an issue. -EJR 10/2013
-        ##
+        ## Note:  some f2py results result in 6 outputs, while result in 7;
+        ##        this is one of the latter, thus `otypes=[float]*7`
         #output = pyLTR.transform.geopack_08.gswgse_08(0.,0.,0., x,y,z, iGSEtoGSM)
         v_gp08 = p.vectorize(pyLTR.transform.geopack_08.gswgse_08,
                         otypes=[float]*7)
@@ -308,10 +314,11 @@ def GEOtoMAG(x,y,z, dateTime):
     ## Note:  vectorize()'s doc string states that this is not very speed
     ##        optimized...Geopack should be ported to Python, or re-written
     ##        to accept array inputs, if speed is an issue. -EJR 10/2013
-    ##
+   ## Note:  some f2py results result in 6 outputs, while result in 7;
+   ##        this is one of the latter, thus `otypes=[float]*7`
     #output = pyLTR.transform.geopack_08.gswgse_08(x, y, z, 0.,0.,0., iGEOtoMAG)
     v_gp08 = p.vectorize(pyLTR.transform.geopack_08.geomag_08,
-                        otypes=[float]*6)
+                        otypes=[float]*7)
     output = v_gp08(x, y, z, 0., 0., 0., iGEOtoMAG)
      
     ## if scalar inputs, generate scalar outputs -EJR 10/2013
@@ -336,10 +343,11 @@ def MAGtoGEO(x,y,z, dateTime):
     ## Note:  vectorize()'s doc string states that this is not very speed
     ##        optimized...Geopack should be ported to Python, or re-written
     ##        to accept array inputs, if speed is an issue. -EJR 10/2013
-    ##
+   ## Note:  some f2py results result in 6 outputs, while result in 7;
+   ##        this is one of the latter, thus `otypes=[float]*7`
     #output = pyLTR.transform.geopack_08.gswgse_08(0.,0.,0., x, y, z, iGEOtoMAG)
     v_gp08 = p.vectorize(pyLTR.transform.geopack_08.geomag_08,
-                        otypes=[float]*6)
+                        otypes=[float]*7)
     output = v_gp08(0., 0., 0., x, y, z, iGEOtoMAG)
      
     ## if scalar inputs, generate scalar outputs -EJR 10/2013
@@ -362,10 +370,10 @@ def SMtoMAG(x,y,z, dateTime):
    ## Note:  vectorize()'s doc string states that this is not very speed
    ##        optimized...Geopack should be ported to Python, or re-written
    ##        to accept array inputs, if speed is an issue. -EJR 12/2013
-   ##
-   
+   ## Note:  some f2py results result in 6 outputs, while result in 7;
+   ##        this is one of the latter, thus `otypes=[float]*7`   
    v_gp08 = p.vectorize(pyLTR.transform.geopack_08.magsm_08,
-                        otypes=[float]*6)
+                        otypes=[float]*7)
    output =  v_gp08(0., 0., 0., x, y, z, iSMtoMAG)
    
    ## if scalar inputs, generate scalar outputs -EJR 12/2013
@@ -388,9 +396,10 @@ def MAGtoSM(x,y,z, dateTime):
    ## Note:  vectorize()'s doc string states that this is not very speed
    ##        optimized...Geopack should be ported to Python, or re-written
    ##        to accept array inputs, if speed is an issue. -EJR 12/2013
-   ##
+   ## Note:  some f2py results result in 6 outputs, while result in 7;
+   ##        this is one of the latter, thus `otypes=[float]*7`
    v_gp08 = p.vectorize(pyLTR.transform.geopack_08.magsm_08,
-                        otypes=[float]*6)
+                        otypes=[float]*7)
    output =  v_gp08(x, y, z, 0., 0., 0., iMAGtoSM)
    
    ## if scalar inputs, generate scalar outputs -EJR 12/2013
@@ -414,7 +423,8 @@ def GEOtoGSM(x,y,z, dateTime):
    ## Note:  vectorize()'s doc string states that this is not very speed
    ##        optimized...Geopack should be ported to Python, or re-written
    ##        to accept array inputs, if speed is an issue. -EJR 12/2013
-   ##
+   ## Note:  some f2py results result in 6 outputs, while result in 7;
+   ##        this is one of the latter, thus `otypes=[float]*6`
    v_gp08 = p.vectorize(pyLTR.transform.geopack_08.geogsw_08,
                         otypes=[float]*6)
    output =  v_gp08(x, y, z, 0., 0., 0., iGEOtoGSM)
@@ -439,7 +449,8 @@ def GSMtoGEO(x,y,z, dateTime):
    ## Note:  vectorize()'s doc string states that this is not very speed
    ##        optimized...Geopack should be ported to Python, or re-written
    ##        to accept array inputs, if speed is an issue. -EJR 12/2013
-   ##
+   ## Note:  some f2py results result in 6 outputs, while result in 7;
+   ##        this is one of the latter, thus `otypes=[float]*6`
    v_gp08 = p.vectorize(pyLTR.transform.geopack_08.geogsw_08,
                         otypes=[float]*6)
    output =  v_gp08(0., 0., 0., x, y, z, iGEOtoGSM)
@@ -466,7 +477,8 @@ def GEOtoSM(x,y,z, dateTime):
    ## Note:  vectorize()'s doc string states that this is not very speed
    ##        optimized...Geopack should be ported to Python, or re-written
    ##        to accept array inputs, if speed is an issue. -EJR 12/2013
-   ##
+   ## Note:  some f2py results result in 6 outputs, while result in 7;
+   ##        this is one of the latter, thus `otypes=[float]*6`
    v_gp08a = p.vectorize(pyLTR.transform.geopack_08.geogsw_08,
                         otypes=[float]*6)
    _,_,_,xgsm,ygsm,zgsm =  v_gp08a(x, y, z, 0., 0., 0., iGEOtoGSM)
@@ -497,7 +509,8 @@ def SMtoGEO(x,y,z, dateTime):
    ## Note:  vectorize()'s doc string states that this is not very speed
    ##        optimized...Geopack should be ported to Python, or re-written
    ##        to accept array inputs, if speed is an issue. -EJR 12/2013
-   ##
+   ## Note:  some f2py results result in 6 outputs, while result in 7;
+   ##        this is one of the latter, thus `otypes=[float]*6`
    v_gp08a = p.vectorize(pyLTR.transform.geopack_08.smgsw_08,
                         otypes=[float]*6)
    _,_,_,xgsm,ygsm,zgsm =  v_gp08a(x, y, z, 0., 0., 0., iSMtoGSM)
