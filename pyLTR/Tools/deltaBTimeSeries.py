@@ -606,13 +606,13 @@ def extractQuantities(path='./', run='',
       colatNdict = {'data':n.arcsin(rN),'name':r'\theta','units':r'rad'}
       
       # create 1-amp DALECS to be scaled inside the loop
-      print("ionospheric currents")
       dalecs_N_ion = DALECS.dalecs((longNdict['data'], colatNdict['data']),
                                     ion_rho=ion_rho, fac=False, equator=False)
+      print("ionospheric currents")
             
-      print("field-aligned currents")
       dalecs_N_fac = DALECS.dalecs((longNdict['data'], colatNdict['data']),
                                     ion_rho=ion_rho, iono=False)
+      print("field-aligned currents")
             
       dalecs_N_fac = dalecs_N_fac.trim(rho_max=2.5*ion_rho)
       
@@ -640,13 +640,13 @@ def extractQuantities(path='./', run='',
       colatSdict = {'data':p.pi-n.arcsin(rS),'name':r'\theta','units':r'rad'}
 
       # create 1-amp DALECS to be scaled inside the loop
-      print("ionospheric currents")
       dalecs_S_ion = DALECS.dalecs((longSdict['data'], colatSdict['data']),
                                     ion_rho=ion_rho, fac=False, equator=False)
+      print("ionospheric currents")
             
-      print("field-aligned currents")
       dalecs_S_fac = DALECS.dalecs((longSdict['data'], colatSdict['data']),
                                     ion_rho=ion_rho, iono=False)
+      print("field-aligned currents")
             
       dalecs_S_fac = dalecs_S_fac.trim(rho_max=2.5*ion_rho)
       
@@ -711,13 +711,14 @@ def extractQuantities(path='./', run='',
       TIE_weights[:,-1] = 0 # force zero at north pole
       
       # initialize DALECS for ionosphere and field-aligned currents
-      print("ionospheric currents")
       dalecs_T_ion = DALECS.dalecs((phiT_mag_interp, thetaT_mag_interp),
                                     ion_rho=ion_rho, fac=False, equator=False)
+      print("ionospheric currents")
             
-      print("field-aligned currents")
       dalecs_T_fac = DALECS.dalecs((phiT_mag_interp, thetaT_mag_interp),
                                     ion_rho=ion_rho, iono=False)
+      print("field-aligned currents")
+      
       dalecs_T_fac = dalecs_T_fac.trim(rho_max=2.5*ion_rho)
          
       # convert to Cartesian coordinates
