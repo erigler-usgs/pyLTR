@@ -569,69 +569,64 @@ class dalecs(object):
            self.amps_type2.size)
         )
         
-        # loop over each DALEC/Obs pair to fill out the scaling matrices
-        for i in np.arange(obs_phis.size):
-          for j in np.arange(self.amps_type1.size):
+        # loop over each DALEC to fill out the scaling matrices
+        for j in np.arange(self.amps_type1.size):
 
-            # calculate deltaB at Obs[i] given type1 DALEC[j]
-            (self._bs_sphere_matrix_type1[3*i + 0, j],
-             self._bs_sphere_matrix_type1[3*i + 1, j],
-             self._bs_sphere_matrix_type1[3*i + 2, j]) = np.hstack(
-               bs_sphere(
-                (np.hstack((self._rvecs_type1_iono[0].flat[j],
-                            self._rvecs_type1_fac[0].flat[j],
-                            self._rvecs_type1_equator[0].flat[j])),
-                 np.hstack((self._rvecs_type1_iono[1].flat[j],
-                            self._rvecs_type1_fac[1].flat[j],
-                            self._rvecs_type1_equator[1].flat[j])),
-                 np.hstack((self._rvecs_type1_iono[2].flat[j],
-                            self._rvecs_type1_fac[2].flat[j],
-                            self._rvecs_type1_equator[2].flat[j])) ),
-                (np.hstack((self._Jvecs_type1_iono[0].flat[j],
-                            self._Jvecs_type1_fac[0].flat[j],
-                            self._Jvecs_type1_equator[0].flat[j])),
-                 np.hstack((self._Jvecs_type1_iono[1].flat[j],
-                            self._Jvecs_type1_fac[1].flat[j],
-                            self._Jvecs_type1_equator[1].flat[j])),
-                 np.hstack((self._Jvecs_type1_iono[2].flat[j],
-                            self._Jvecs_type1_fac[2].flat[j],
-                            self._Jvecs_type1_equator[2].flat[j])) ),
-                np.hstack((self._dvecs_type1_iono.flat[j],
-                           self._dvecs_type1_fac.flat[j],
-                           self._dvecs_type1_equator.flat[j])),
-                (obs_phis.flat[i], obs_thetas.flat[i], obs_rhos.flat[i])
-               )
-            ) # np.hstack required because bs_sphere() returns array of arrays
+          # calculate deltaB at each obs given type1 DALEC[j]
+          self._bs_sphere_matrix_type1[:, j] = np.vstack(
+            bs_sphere(
+              (np.hstack((self._rvecs_type1_iono[0].flat[j],
+                          self._rvecs_type1_fac[0].flat[j],
+                          self._rvecs_type1_equator[0].flat[j])),
+               np.hstack((self._rvecs_type1_iono[1].flat[j],
+                          self._rvecs_type1_fac[1].flat[j],
+                          self._rvecs_type1_equator[1].flat[j])),
+               np.hstack((self._rvecs_type1_iono[2].flat[j],
+                          self._rvecs_type1_fac[2].flat[j],
+                          self._rvecs_type1_equator[2].flat[j])) ),
+              (np.hstack((self._Jvecs_type1_iono[0].flat[j],
+                          self._Jvecs_type1_fac[0].flat[j],
+                          self._Jvecs_type1_equator[0].flat[j])),
+               np.hstack((self._Jvecs_type1_iono[1].flat[j],
+                          self._Jvecs_type1_fac[1].flat[j],
+                          self._Jvecs_type1_equator[1].flat[j])),
+               np.hstack((self._Jvecs_type1_iono[2].flat[j],
+                          self._Jvecs_type1_fac[2].flat[j],
+                          self._Jvecs_type1_equator[2].flat[j])) ),
+              np.hstack((self._dvecs_type1_iono.flat[j],
+                         self._dvecs_type1_fac.flat[j],
+                         self._dvecs_type1_equator.flat[j])),
+              (obs_phis.reshape(-1), obs_thetas.reshape(-1), obs_rhos.reshape(-1))
+            )
+          ).T.reshape(-1)
 
-            # calculate deltaB at Obs[i] given type2 DALEC[j]
-            (self._bs_sphere_matrix_type2[3*i + 0, j],
-             self._bs_sphere_matrix_type2[3*i + 1, j],
-             self._bs_sphere_matrix_type2[3*i + 2, j]) = np.hstack(
-              bs_sphere(
-                (np.hstack((self._rvecs_type2_iono[0].flat[j],
-                            self._rvecs_type2_fac[0].flat[j],
-                            self._rvecs_type2_equator[0].flat[j])),
-                 np.hstack((self._rvecs_type2_iono[1].flat[j],
-                            self._rvecs_type2_fac[1].flat[j],
-                            self._rvecs_type2_equator[1].flat[j])),
-                 np.hstack((self._rvecs_type2_iono[2].flat[j],
-                            self._rvecs_type2_fac[2].flat[j],
-                            self._rvecs_type2_equator[2].flat[j])) ),
-                (np.hstack((self._Jvecs_type2_iono[0].flat[j],
-                            self._Jvecs_type2_fac[0].flat[j],
-                            self._Jvecs_type2_equator[0].flat[j])),
-                 np.hstack((self._Jvecs_type2_iono[1].flat[j],
-                            self._Jvecs_type2_fac[1].flat[j],
-                            self._Jvecs_type2_equator[1].flat[j])),
-                 np.hstack((self._Jvecs_type2_iono[2].flat[j],
-                            self._Jvecs_type2_fac[2].flat[j],
-                            self._Jvecs_type2_equator[2].flat[j])) ),
-                np.hstack((self._dvecs_type2_iono.flat[j],
-                           self._dvecs_type2_fac.flat[j],
-                           self._dvecs_type2_equator.flat[j])),
-                (obs_phis.flat[i], obs_thetas.flat[i], obs_rhos.flat[i])
-              )
-            ) # np.hstack required because bs_sphere() returns array of arrays
+          # calculate deltaB at each obs given type2 DALEC[j]
+          self._bs_sphere_matrix_type2[:, j] = np.vstack(
+            bs_sphere(
+              (np.hstack((self._rvecs_type2_iono[0].flat[j],
+                          self._rvecs_type2_fac[0].flat[j],
+                          self._rvecs_type2_equator[0].flat[j])),
+               np.hstack((self._rvecs_type2_iono[1].flat[j],
+                          self._rvecs_type2_fac[1].flat[j],
+                          self._rvecs_type2_equator[1].flat[j])),
+               np.hstack((self._rvecs_type2_iono[2].flat[j],
+                          self._rvecs_type2_fac[2].flat[j],
+                          self._rvecs_type2_equator[2].flat[j])) ),
+              (np.hstack((self._Jvecs_type2_iono[0].flat[j],
+                          self._Jvecs_type2_fac[0].flat[j],
+                          self._Jvecs_type2_equator[0].flat[j])),
+               np.hstack((self._Jvecs_type2_iono[1].flat[j],
+                          self._Jvecs_type2_fac[1].flat[j],
+                          self._Jvecs_type2_equator[1].flat[j])),
+               np.hstack((self._Jvecs_type2_iono[2].flat[j],
+                          self._Jvecs_type2_fac[2].flat[j],
+                          self._Jvecs_type2_equator[2].flat[j])) ),
+              np.hstack((self._dvecs_type2_iono.flat[j],
+                         self._dvecs_type2_fac.flat[j],
+                         self._dvecs_type2_equator.flat[j])),
+              (obs_phis.reshape(-1), obs_thetas.reshape(-1), obs_rhos.reshape(-1))
+            )
+          ).T.reshape(-1)
 
       # matrix is defined, now use it
       if type1:
@@ -727,69 +722,63 @@ class dalecs(object):
            self.amps_type2.size)
         )
         
-        # loop over each DALEC/Obs pair to fill out the scaling matrices
-        for i in np.arange(obs_x.size):
-          for j in np.arange(self.amps_type1.size):
+        # loop over each DALEC to fill out the scaling matrices
+        for j in np.arange(self.amps_type1.size):
+          # calculate deltaB at at each obs given type1 DALEC[j]
+          self._bs_cart_matrix_type1[:, j] = np.vstack(
+             bs_cart(
+              (np.hstack((self._rvecs_type1_iono[0].flat[j],
+                          self._rvecs_type1_fac[0].flat[j],
+                          self._rvecs_type1_equator[0].flat[j])),
+               np.hstack((self._rvecs_type1_iono[1].flat[j],
+                          self._rvecs_type1_fac[1].flat[j],
+                          self._rvecs_type1_equator[1].flat[j])),
+               np.hstack((self._rvecs_type1_iono[2].flat[j],
+                          self._rvecs_type1_fac[2].flat[j],
+                          self._rvecs_type1_equator[2].flat[j])) ),
+              (np.hstack((self._Jvecs_type1_iono[0].flat[j],
+                          self._Jvecs_type1_fac[0].flat[j],
+                          self._Jvecs_type1_equator[0].flat[j])),
+               np.hstack((self._Jvecs_type1_iono[1].flat[j],
+                          self._Jvecs_type1_fac[1].flat[j],
+                          self._Jvecs_type1_equator[1].flat[j])),
+               np.hstack((self._Jvecs_type1_iono[2].flat[j],
+                          self._Jvecs_type1_fac[2].flat[j],
+                          self._Jvecs_type1_equator[2].flat[j])) ),
+              np.hstack((self._dvecs_type1_iono.flat[j],
+                         self._dvecs_type1_fac.flat[j],
+                         self._dvecs_type1_equator.flat[j])),
+              (obs_x.reshape(-1), obs_y.reshape(-1), obs_z.reshape(-1))
+             )
+          ).T.reshape(-1)
 
-            # calculate deltaB at Obs[i] given type1 DALEC[j]
-            (self._bs_cart_matrix_type1[3*i + 0, j],
-             self._bs_cart_matrix_type1[3*i + 1, j],
-             self._bs_cart_matrix_type1[3*i + 2, j]) = np.hstack(
-               bs_cart(
-                (np.hstack((self._rvecs_type1_iono[0].flat[j],
-                            self._rvecs_type1_fac[0].flat[j],
-                            self._rvecs_type1_equator[0].flat[j])),
-                 np.hstack((self._rvecs_type1_iono[1].flat[j],
-                            self._rvecs_type1_fac[1].flat[j],
-                            self._rvecs_type1_equator[1].flat[j])),
-                 np.hstack((self._rvecs_type1_iono[2].flat[j],
-                            self._rvecs_type1_fac[2].flat[j],
-                            self._rvecs_type1_equator[2].flat[j])) ),
-                (np.hstack((self._Jvecs_type1_iono[0].flat[j],
-                            self._Jvecs_type1_fac[0].flat[j],
-                            self._Jvecs_type1_equator[0].flat[j])),
-                 np.hstack((self._Jvecs_type1_iono[1].flat[j],
-                            self._Jvecs_type1_fac[1].flat[j],
-                            self._Jvecs_type1_equator[1].flat[j])),
-                 np.hstack((self._Jvecs_type1_iono[2].flat[j],
-                            self._Jvecs_type1_fac[2].flat[j],
-                            self._Jvecs_type1_equator[2].flat[j])) ),
-                np.hstack((self._dvecs_type1_iono.flat[j],
-                           self._dvecs_type1_fac.flat[j],
-                           self._dvecs_type1_equator.flat[j])),
-                (obs_x.flat[i], obs_y.flat[i], obs_z.flat[i])
-               )
-            ) # np.hstack required because bs_cart() returns array of arrays
-
-            # calculate deltaB at Obs[i] given type2 DALEC[j]
-            (self._bs_cart_matrix_type2[3*i + 0, j],
-             self._bs_cart_matrix_type2[3*i + 1, j],
-             self._bs_cart_matrix_type2[3*i + 2, j]) = np.hstack(
-              bs_cart(
-                (np.hstack((self._rvecs_type2_iono[0].flat[j],
-                            self._rvecs_type2_fac[0].flat[j],
-                            self._rvecs_type2_equator[0].flat[j])),
-                 np.hstack((self._rvecs_type2_iono[1].flat[j],
-                            self._rvecs_type2_fac[1].flat[j],
-                            self._rvecs_type2_equator[1].flat[j])),
-                 np.hstack((self._rvecs_type2_iono[2].flat[j],
-                            self._rvecs_type2_fac[2].flat[j],
-                            self._rvecs_type2_equator[2].flat[j])) ),
-                (np.hstack((self._Jvecs_type2_iono[0].flat[j],
-                            self._Jvecs_type2_fac[0].flat[j],
-                            self._Jvecs_type2_equator[0].flat[j])),
-                 np.hstack((self._Jvecs_type2_iono[1].flat[j],
-                            self._Jvecs_type2_fac[1].flat[j],
-                            self._Jvecs_type2_equator[1].flat[j])),
-                 np.hstack((self._Jvecs_type2_iono[2].flat[j],
-                            self._Jvecs_type2_fac[2].flat[j],
-                            self._Jvecs_type2_equator[2].flat[j])) ),
-                np.hstack((self._dvecs_type2_iono.flat[j],
-                           self._dvecs_type2_fac.flat[j],
-                           self._dvecs_type2_equator.flat[j])),
-                (obs_x.flat[i], obs_y.flat[i], obs_z.flat[i])
-              )
-            ) # np.hstack required because bs_cart() returns array of arrays
+          # calculate deltaB at each obs given type2 DALEC[j]
+          self._bs_cart_matrix_type2[:, j] = np.vstack(
+             bs_cart(
+              (np.hstack((self._rvecs_type2_iono[0].flat[j],
+                          self._rvecs_type2_fac[0].flat[j],
+                          self._rvecs_type2_equator[0].flat[j])),
+               np.hstack((self._rvecs_type2_iono[1].flat[j],
+                          self._rvecs_type2_fac[1].flat[j],
+                          self._rvecs_type2_equator[1].flat[j])),
+               np.hstack((self._rvecs_type2_iono[2].flat[j],
+                          self._rvecs_type2_fac[2].flat[j],
+                          self._rvecs_type2_equator[2].flat[j])) ),
+              (np.hstack((self._Jvecs_type2_iono[0].flat[j],
+                          self._Jvecs_type2_fac[0].flat[j],
+                          self._Jvecs_type2_equator[0].flat[j])),
+               np.hstack((self._Jvecs_type2_iono[1].flat[j],
+                          self._Jvecs_type2_fac[1].flat[j],
+                          self._Jvecs_type2_equator[1].flat[j])),
+               np.hstack((self._Jvecs_type2_iono[2].flat[j],
+                          self._Jvecs_type2_fac[2].flat[j],
+                          self._Jvecs_type2_equator[2].flat[j])) ),
+              np.hstack((self._dvecs_type2_iono.flat[j],
+                         self._dvecs_type2_fac.flat[j],
+                         self._dvecs_type2_equator.flat[j])),
+              (obs_x.reshape(-1), obs_y.reshape(-1), obs_z.reshape(-1))
+             )
+          ).T.reshape(-1)
 
       # matrix is defined, now use it
       if type1:
@@ -2876,80 +2865,90 @@ def bs_cart(rvecs, Jvecs, dvecs, observs):
    dBys = np.zeros(obs_ys.shape)
    dBzs = np.zeros(obs_zs.shape)
 
-
-   #############################################################################
-   ##
-   ## This block is a NumPy vectorized version of the following loop. It was
-   ## tested, and generates results identical to those from the following loop.
-   ## We commented it out and use the loop because when more than a few hundred
-   ## observatories are processed), the memory management overhead slows things
-   ## considerably on a Macintosh laptop with 8GB RAM.
-   ##
-   ## Tested the vectorized code on NCAR's Geyser, which has two terabytes (!)
-   ## of RAM, but it is still slower than the following loop. Some day I may
-   ## investigate this further, but for now stick with the loop. Some notes and
-   ## ideas on possible causes of the unexpected slowdown:
-   ##
-   ## * Some very basic profiling suggests that the major bottleneck occurs when
-   ##   calculating dr3; some moderate speed improvements were achieved when the
-   ##   old-school numerical trick of multiplying values 2 or 3 times, rather
-   ##   than relying on power() functions (or ^ or ** operators), was used, but
-   ##   the loop was still faster.
-   ## * NCAR's Geyser is a distributed memory architecture...amazingly, I think
-   ##   Geyser might actually be shared memory, according to online docs
-   ## * NumPy's "broadcasting" is not as efficient as one might believe; try
-   ##   creating full matrices manually (use tile() command(?)).
-   ## * Try multiplying matrices in-place using a *= operator...doesn't do much
-   ##   when in loop mode, but maybe for large arrays it will be faster.
-   ##
-   #############################################################################
-   ##
-   ## # attempt to vectorize over observatories too
-   ## dxs = obs_xs.reshape(1,obs_xs.size) - xs.reshape(xs.size,1)
-   ## dys = obs_ys.reshape(1,obs_ys.size) - ys.reshape(ys.size,1)
-   ## dzs = obs_zs.reshape(1,obs_zs.size) - zs.reshape(zs.size,1)
-   ##
-   ## #dr3 = np.sqrt(dxs**2 + dys**2 + dzs**2)**3
-   ## dr = np.sqrt(dxs*dxs + dys*dys + dzs*dzs)
-   ## dr3 = dr * dr * dr
-   ##
-   ##
-   ## dBxs = 1e-7 * np.nansum( (Jys.reshape(Jys.size,1) * dzs -
-   ##                          Jzs.reshape(Jzs.size,1) * dys) /
-   ##                         dr3 * dlavs.reshape(dlavs.size,1), axis=0).flatten()
-   ## dBys = 1e-7 * np.nansum( (Jzs.reshape(Jzs.size,1) * dxs -
-   ##                          Jxs.reshape(Jxs.size,1) * dzs) /
-   ##                         dr3 * dlavs.reshape(dlavs.size,1), axis=0).flatten()
-   ## dBzs = 1e-7 * np.nansum( (Jxs.reshape(Jxs.size,1) * dys -
-   ##                          Jys.reshape(Jys.size,1) * dxs) /
-   ##                         dr3 * dlavs.reshape(dlavs.size,1), axis=0).flatten()
-   ##
-   #############################################################################
-
-   # loop over observatories
-   for j in range(nobs):
-
-
-      # get displacement vectors from jth observatory to each current segment
-      dxs = obs_xs[j] - xs
-      dys = obs_ys[j] - ys
-      dzs = obs_zs[j] - zs
-
-      # cube the magnitude of displacment vector
+   if nobs * dlavs.size < 1e6:
+            
+      #############################################################################
+      ##
+      ## This block is a vectorized version of the loop in the following block. It
+      ## was tested, and generates results identical to the loop method. Initially,
+      ## I commented it out and used the loop because when more than a few hundred
+      ## observatories are processed, the memory management overhead slowed things
+      ## considerably.
+      ##
+      ## Tested the vectorized code on NCAR's Geyser, which has two terabytes (!)
+      ## of RAM, but it is still slower than the following loop. Some day I may
+      ## investigate this further, but for now stick with the loop. Some notes and
+      ## ideas on possible causes of the unexpected slowdown:
+      ##
+      ## * Some very basic profiling suggests that the major bottleneck occurs when
+      ##   calculating dr3; some moderate speed improvements were achieved when the
+      ##   old-school numerical trick of multiplying values 2 or 3 times, rather
+      ##   than relying on power() functions (or ^ or ** operators), was used, but
+      ##   the loop was still faster.
+      ## * NCAR's Geyser is a distributed memory architecture...amazingly, I think
+      ##   Geyser might actually be shared memory, according to online docs
+      ## * NumPy's "broadcasting" is not as efficient as one might believe; try
+      ##   creating full matrices manually (use tile() command(?)).
+      ## * Try multiplying matrices in-place using a *= operator...doesn't do much
+      ##   when in loop mode, but maybe for large arrays it will be faster.
+      ##
+      ## ***
+      ##
+      ##   Revisited in 2020...as you can see, my solution was to simply set a
+      ##   condition in terms of array size under which we'd use Numpy's array
+      ##   broadcasting, and over which we'd resort to looping. The threshold
+      ##   (1e6 array elements as of this writing) is arbitrary, but seems to
+      ##   work reasonably well in limited testing. It is likely to be system-
+      ##   dependent, and almost certainly varies with the Python/Numpy version
+      ##   being used. -EJR
+      ##
+      #############################################################################
+      
+      # attempt to vectorize over observatories too
+      dxs = obs_xs.reshape(1,obs_xs.size) - xs.reshape(xs.size,1)
+      dys = obs_ys.reshape(1,obs_ys.size) - ys.reshape(ys.size,1)
+      dzs = obs_zs.reshape(1,obs_zs.size) - zs.reshape(zs.size,1)
+      
       #dr3 = np.sqrt(dxs**2 + dys**2 + dzs**2)**3
       dr = np.sqrt(dxs*dxs + dys*dys + dzs*dzs)
-      dr3 = dr*dr*dr # avoiding powers leads to 2-3x speed improvement
+      dr3 = dr * dr * dr
+      
+      
+      dBxs = 1e-7 * np.nansum( (Jys.reshape(Jys.size,1) * dzs -
+                                Jzs.reshape(Jzs.size,1) * dys) /
+                              dr3 * dlavs.reshape(dlavs.size,1), axis=0).flatten()
+      dBys = 1e-7 * np.nansum( (Jzs.reshape(Jzs.size,1) * dxs -
+                                Jxs.reshape(Jxs.size,1) * dzs) /
+                              dr3 * dlavs.reshape(dlavs.size,1), axis=0).flatten()
+      dBzs = 1e-7 * np.nansum( (Jxs.reshape(Jxs.size,1) * dys -
+                                Jys.reshape(Jys.size,1) * dxs) /
+                              dr3 * dlavs.reshape(dlavs.size,1), axis=0).flatten()
+        
+   else:
+   
+      # loop over observatories
+      for j in range(nobs):
 
-      # integrate to get delta_B
-      # NOTE: mu_naught = 4 * pi * 10^-7 Webers/(A*m), which if used here, leads
-      #       to a flux density in units of Tesla. Given there is a 4*pi normalizing
-      #       constant in the Biot-Savart relationsip, we can simply use 10^-7 to
-      #       produce results in Tesla.
-      dBxs[j] = 1e-7 * np.nansum( (Jys * dzs - Jzs * dys) / dr3 * dlavs)
-      dBys[j] = 1e-7 * np.nansum( (Jzs * dxs - Jxs * dzs) / dr3 * dlavs)
-      dBzs[j] = 1e-7 * np.nansum( (Jxs * dys - Jys * dxs) / dr3 * dlavs)
+         # get displacement vectors from jth observatory to each current segment
+         dxs = obs_xs[j] - xs
+         dys = obs_ys[j] - ys
+         dzs = obs_zs[j] - zs
+ 
+         # cube the magnitude of displacment vector
+         #dr3 = np.sqrt(dxs**2 + dys**2 + dzs**2)**3
+         dr = np.sqrt(dxs*dxs + dys*dys + dzs*dzs)
+         dr3 = dr*dr*dr # avoiding powers leads to 2-3x speed improvement
+ 
+         # integrate to get delta_B
+         # NOTE: mu_naught = 4 * pi * 10^-7 Webers/(A*m), which if used here, leads
+         #       to a flux density in units of Tesla. Given there is a 4*pi normalizing
+         #       constant in the Biot-Savart relationsip, we can simply use 10^-7 to
+         #       produce results in Tesla.
+         dBxs[j] = 1e-7 * np.nansum( (Jys * dzs - Jzs * dys) / dr3 * dlavs)
+         dBys[j] = 1e-7 * np.nansum( (Jzs * dxs - Jxs * dzs) / dr3 * dlavs)
+         dBzs[j] = 1e-7 * np.nansum( (Jxs * dys - Jys * dxs) / dr3 * dlavs)
 
-
+   
    return (dBxs.reshape(observs[0].shape),
            dBys.reshape(observs[1].shape),
            dBzs.reshape(observs[2].shape))
