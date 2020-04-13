@@ -1804,19 +1804,34 @@ if __name__ == '__main__':
                                                [['k','r','g','b'][mp] for mp in mp_idx],
                                                [['tot','ion','fac','mag'][mp] for mp in mp_idx])
           # additional ticklabels
-          ax=p.gca()
-          xlims=ax.get_xlim()
-          xticks=ax.get_xticks()
-          labels=["%7.3f"%tick for tick in xticks]
-          #labels=ax.get_xticklabels()
-          #labels=[item.get_text() for item in labels]
-          labels=[item+'\n'+
-                  '%4.1f'%(tsList[0]['phiSM']['data'][j]*180./p.pi)+'\n'+
-                  '%4.1f'%(tsList[0]['thetaSM']['data'][j]*180./p.pi)
-                  for j,item in enumerate(labels)]
-          labels[-2] = 'DoY' + '\n' + r'$\phi_{SM}$' + '\n' + r'$\theta_{SM}$'
+          ax = p.gca()
+          xlims = ax.get_xlim()
+          xticks_doy = ax.get_xticks()
+          
+          # extra tickmarks
+          xticks_phiSM = sinterp.griddata(
+            p.array(tsList[0]['doy']['data']), 
+            p.array(tsList[0]['phiSM']['data']), 
+            p.array(xticks_doy)
+          )
+          xticks_thetaSM = sinterp.griddata(
+            p.array(tsList[0]['doy']['data']), 
+            p.array(tsList[0]['thetaSM']['data']), 
+            p.array(xticks_doy)
+          )
+          
+          # make multi-line xtick labels
+          labels = ["%7.3f\n%4.1f\n%4.1f"%(
+             xticks_doy[tick], 
+             xticks_phiSM[tick] * 180/p.pi, 
+             xticks_thetaSM[tick] * 180/p.pi)
+             for tick in range(len(xticks_doy))
+          ]
+          
+          # last xtick label should define xticks
+          labels[-2] = r'DoY' + '\n' + r'$\phi_{SM}$' + '\n' + r'$\theta_{SM}$'
 
-          ax.set_xticks(xticks)
+          ax.set_xticks(xticks_doy)
           ax.set_xticklabels(labels)
           ax.set_xlim(xlims) # setting xticks changes xlims for some reason
           fig=p.gcf()
