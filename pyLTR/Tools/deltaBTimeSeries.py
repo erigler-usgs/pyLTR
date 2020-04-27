@@ -522,7 +522,7 @@ def extractQuantities(path='./', run='',
         raise Exception('No compatible MIX, TIEGCM, and LFM data files found.')
 
     
-    # get indices to first and last desired time steps
+    # get indices to first and last desired time steps    
     tmin = min(timeRange)
     tmax = max(timeRange)
     if t0: 
@@ -531,21 +531,25 @@ def extractQuantities(path='./', run='',
        elif t0 < tmin:
           index0 = 0
        else:
-          index0 = -1 # t0 > tmax
+          index0 = len(timeRange) # t0 > tmax
     else:
        index0 = timeRange.index(tmin)
 
     if t1:
        if t1 >= tmin and t1 <= tmax:
-         index1 = timeRange.index(tmax) - p.argmax([(t <= t1) for t in timeRange[::-1]])
+          index1 = timeRange.index(tmax) - p.argmax([(t <= t1) for t in timeRange[::-1]]) + 1
        elif t1 > tmax:
-          index1 = -1
+          index1 = len(timeRange)
        else:
-          index1 = -1 - len(timeRange) # t1 < tmin
+          index1 = 0 # t1 < tmin
     else:
        index1 = timeRange.index(tmax)
 
-    print(( 'Extracting quantities for %d time steps.' % (max(index1-index0+1, 0)) ))
+
+    if (index1 - index0) == 0:
+      raise Exception('Requested time range not found in data files')
+    else:
+      print('Extracting quantities for %d time steps.' %(index1 - index0) )
 
    
    # Output a status bar displaying how far along the computation is.
@@ -583,16 +587,11 @@ def extractQuantities(path='./', run='',
     dBDown_mag = []
 
 
-    #
-    # To lessen CPU cost, initialize DALECS outside of loop.
-    #
     DALECS = pyLTR.Physics.DALECS
     
     if dMIX:
-      print()
-      print("Pre-compute Northern MIX DALECS")
-      begin = perf_counter()
-      
+      # MIX grid
+
       # Northern hemisphere
       xN = dMIX.read('Grid X', timeRange[index0])[:-1,:] # remove periodic longitude
       yN = dMIX.read('Grid Y', timeRange[index0])[:-1,:] # remove periodic longitude
@@ -605,28 +604,12 @@ def extractQuantities(path='./', run='',
       longNdict = {'data':thetaN,'name':r'\phi','units':r'rad'}
       colatNdict = {'data':n.arcsin(rN),'name':r'\theta','units':r'rad'}
       
-      # create 1-amp DALECS to be scaled inside the loop
-      dalecs_N_ion = DALECS.dalecs((longNdict['data'], colatNdict['data']),
-                                    ion_rho=ion_rho, fac=False, equator=False)
-      print("ionospheric currents")
-            
-      dalecs_N_fac = DALECS.dalecs((longNdict['data'], colatNdict['data']),
-                                    ion_rho=ion_rho, iono=False)
-      print("field-aligned currents")
-            
-      dalecs_N_fac = dalecs_N_fac.trim(rho_max=2.5*ion_rho)
+      # this will get initialized the first time they are needed in the loop
+      # (FIXME: consider making these an input parameter)
+      dalecs_N_ion = None
+      dalecs_N_fac = None
       
-      # convert _ion and _fac DALECS to Cartesian coordinates to avoid
-      # unnecessary conversions to/from spherical in the loop
-      dalecs_N_ion.cartesian()
-      dalecs_N_fac.cartesian()
-
-      print("...done after %f seconds"%(perf_counter() - begin))
       
-      print()
-      print("Pre-compute Southern MIX DALECS")
-      begin = perf_counter()
-
       # Southern hemisphere
       xS = xN
       yS = -yN
@@ -639,35 +622,19 @@ def extractQuantities(path='./', run='',
       longSdict = {'data':thetaS,'name':r'\phi','units':r'rad'}
       colatSdict = {'data':p.pi-n.arcsin(rS),'name':r'\theta','units':r'rad'}
 
-      # create 1-amp DALECS to be scaled inside the loop
-      dalecs_S_ion = DALECS.dalecs((longSdict['data'], colatSdict['data']),
-                                    ion_rho=ion_rho, fac=False, equator=False)
-      print("ionospheric currents")
-            
-      dalecs_S_fac = DALECS.dalecs((longSdict['data'], colatSdict['data']),
-                                    ion_rho=ion_rho, iono=False)
-      print("field-aligned currents")
-            
-      dalecs_S_fac = dalecs_S_fac.trim(rho_max=2.5*ion_rho)
-      
-      # convert _ion and _fac DALECS to Cartesian coordinates to avoid
-      # unnecessary conversions to/from spherical in the loop
-      dalecs_S_ion.cartesian()
-      dalecs_S_fac.cartesian()
+      # this will get initialized the first time they are needed in the loop
+      # (FIXME: consider making these an input parameter)
+      dalecs_S_ion = None
+      dalecs_S_fac = None
     
+      
       # preliminary MIX weights; will be modified if there are TIEGCM data
       mixN_weights = p.ones(xN.shape)
       mixS_weights = p.ones(xN.shape)
       
-      print("...done after %f seconds"%(perf_counter() - begin))
-
     
     if dTIE:
-      print()
-      print("Pre-compute TIEGCM DALECS")
-      begin = perf_counter()
-
-      # TIEGCM
+      # TIEGCM grid
 
       if dMIX:
          # recalculate dMIX weights if there are TIEGCM data
@@ -707,31 +674,20 @@ def extractQuantities(path='./', run='',
                         (p.pi - theta) > (p.pi - mixS_theta_min) / 2 )
                     else 0
          )
+
+      # this will get initialized the first time they are needed in the loop
+      # (FIXME: consider making these an input parameter)
+      dalecs_T_ion = None
+      dalecs_T_fac = None
+
+
       TIE_weights[:,0] = 0 # force zero at south pole
       TIE_weights[:,-1] = 0 # force zero at north pole
       
-      # initialize DALECS for ionosphere and field-aligned currents
-      dalecs_T_ion = DALECS.dalecs((phiT_mag_interp, thetaT_mag_interp),
-                                    ion_rho=ion_rho, fac=False, equator=False)
-      print("ionospheric currents")
-            
-      dalecs_T_fac = DALECS.dalecs((phiT_mag_interp, thetaT_mag_interp),
-                                    ion_rho=ion_rho, iono=False)
-      print("field-aligned currents")
-      
-      dalecs_T_fac = dalecs_T_fac.trim(rho_max=2.5*ion_rho)
-         
-      # convert to Cartesian coordinates
-      dalecs_T_ion.cartesian()
-      dalecs_T_fac.cartesian()
-      
-      print("...done after %f seconds"%(perf_counter() - begin))
         
 
     if dLFM:
-      print()
-      print("Pre-compute LFM grid and volumes")
-      begin = perf_counter()
+      # LFM MHD grid
 
       # Magnetosphere
       x_sm = dLFM.read('X_grid', timeRange[index0]) # this is in cm
@@ -746,7 +702,6 @@ def extractQuantities(path='./', run='',
       zJ_sm = zJ_sm/100 # ...and the coordinates should be in meters for BS.py
       dV_sm = hgridcc.cellVolume()/(100**3) # ...and we need dV in m^3 for BS.py
       
-      print("...done after %f seconds"%(perf_counter() - begin))
 
 
     # Prepare to initiate main loop
@@ -756,7 +711,7 @@ def extractQuantities(path='./', run='',
     t0 = timeRange[index0]
     tt = t0.timetuple() # required for serial DOY (i.e., doesn't wrap at new year)
     doy0 = tt.tm_yday + tt.tm_hour/24.0 + tt.tm_min/1440.0 + tt.tm_sec/86400.0
-    for i,time in enumerate(timeRange[index0:index1 + 1]):
+    for i,time in enumerate(timeRange[index0:index1]):
 
         # this try/except block is just to handle interrupts and to clean up
         # the progress bar if something goes wrong
@@ -1265,10 +1220,66 @@ def extractQuantities(path='./', run='',
                   ).reshape(thetaS_interp.shape)
                   
                   
+
+
+
+                  # if DALECS are not initialized yet, do it now
+                  if dalecs_N_ion is None:
+                     print()
+                     print("Initializing Northern MIX DALECS")
+                     begin = perf_counter()
+                     
+                     print("   ...ionospheric currents")
+                     # create 1-amp DALECS to be scaled inside the loop
+                     dalecs_N_ion = DALECS.dalecs((longNdict['data'], colatNdict['data']),
+                                                   ion_rho=ion_rho, fac=False, equator=False)
+                           
+                     print("   ...field-aligned currents")
+                     dalecs_N_fac = DALECS.dalecs((longNdict['data'], colatNdict['data']),
+                                                   ion_rho=ion_rho, iono=False)
+                           
+                     dalecs_N_fac = dalecs_N_fac.trim(rho_max=2.5*ion_rho)
+                     
+                     # convert _ion and _fac DALECS to Cartesian coordinates to avoid
+                     # unnecessary conversions to/from spherical in the loop
+                     dalecs_N_ion.cartesian()
+                     dalecs_N_fac.cartesian()
+
+                     print("done after %f seconds"%(perf_counter() - begin))
+
+
+                  if dalecs_S_ion is None:
+                     print()
+                     print("Initializing Southern MIX DALECS")
+                     begin = perf_counter()
+
+                     print("   ...ionospheric currents")
+                     # create 1-amp DALECS to be scaled inside the loop
+                     dalecs_S_ion = DALECS.dalecs((longSdict['data'], colatSdict['data']),
+                                                   ion_rho=ion_rho, fac=False, equator=False)
+                           
+                     print("   ...field-aligned currents")
+                     dalecs_S_fac = DALECS.dalecs((longSdict['data'], colatSdict['data']),
+                                                   ion_rho=ion_rho, iono=False)
+                           
+                     dalecs_S_fac = dalecs_S_fac.trim(rho_max=2.5*ion_rho)
+                     
+                     # convert _ion and _fac DALECS to Cartesian coordinates to avoid
+                     # unnecessary conversions to/from spherical in the loop
+                     dalecs_S_ion.cartesian()
+                     dalecs_S_fac.cartesian()
+
+                     print("done after %f seconds"%(perf_counter() - begin))
+
+
+
+                  
+
                   # update Northern MIX DALECS and integrate BS
                   print()
-                  print("North...")
+                  print("Scale northern DALECS and integrate Biot-Savart")
                   begin = perf_counter()
+                  
                   dalecs_N_ion.scale(
                      (mixN_weights * JphiN_interp/1e6, 
                       mixN_weights * JthetaN_interp/1e6)
@@ -1291,10 +1302,11 @@ def extractQuantities(path='./', run='',
                   print("...done after %f seconds"%(perf_counter() - begin))
                   
 
-                  print()
-                  print("South...")
                   # update Southern MIX DALECS and integrate BS
+                  print()
+                  print("Scale southern DALECS and integrate Biot-Savart")
                   begin = perf_counter()
+                  
                   dalecs_S_ion.scale(
                      (mixS_weights * JphiS_interp/1e6, 
                       mixS_weights * JthetaS_interp/1e6)
@@ -1471,7 +1483,39 @@ def extractQuantities(path='./', run='',
                       thetaT_interp.reshape(-1))
                   ).reshape(thetaT_interp.shape)
 
+
+
+
+                  if dalecs_T_ion is None:
+
+                     print()
+                     print("Initializing TIEGCM DALECS")
+                     begin = perf_counter()
+
+                     # initialize DALECS for ionosphere and field-aligned currents
+                     print("   ...ionospheric currents")
+                     dalecs_T_ion = DALECS.dalecs((phiT_mag_interp, thetaT_mag_interp),
+                                                   ion_rho=ion_rho, fac=False, equator=False)
+                           
+                     print("   ...field-aligned currents")
+                     dalecs_T_fac = DALECS.dalecs((phiT_mag_interp, thetaT_mag_interp),
+                                                   ion_rho=ion_rho, iono=False)
+                     
+                     dalecs_T_fac = dalecs_T_fac.trim(rho_max=2.5*ion_rho)
+                        
+                     # convert to Cartesian coordinates
+                     dalecs_T_ion.cartesian()
+                     dalecs_T_fac.cartesian()
+                     
+                     print("done after %f seconds"%(perf_counter() - begin))
+
+
+
+
+
                   # update TIEGCM DALECS and integrate BS
+                  print()
+                  print("Scale DALECS and integrate Biot-Savart")
                   begin = perf_counter()
                   
                   dalecs_T_ion.scale(
