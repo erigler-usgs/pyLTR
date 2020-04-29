@@ -11,6 +11,8 @@ import pyLTR
 # 3rd-party
 import pylab as p
 import numpy as n
+from multiprocessing import Pool
+from psutil import cpu_count
 
 # Standard
 import pickle
@@ -373,6 +375,33 @@ def extractQuantities(path='./', run='',
                   (default is 'figs')
     """
     
+    """
+    FIXME: Initial paralleliation over observatories using multiprocessing Pool
+           was ridiculously slow. Apparently everything gets serialized, copied
+           to the worker processes, de-serialized, processed, re-serialized,
+           copied back, and de-serialized again. Since our input objects can be
+           very large, this slows down our parallel execution immensely. A more
+           complete explation can be found here:
+           
+           https://thelaziestprogrammer.com/python/a-multiprocessing-pool-pickle
+           
+           Remove the ncpus option for now, but leave the original code in-place,
+           and hard-code ncpus to 1 to prevent parallel execution; return in the
+           future to try again with something like Dask.
+      ncpus     - specify the number of parallel processes over which to 
+                  distribute observatory processing using multiprocessing.Pool
+                  NOTE: if this is not 1, the matrix optimizations are not 
+                        possible; this is probably a good thing, since these
+                        optimizations can be memory hogs
+                  NOTE: this number should not exceed the number of available
+                        cpus/cores, but no check is made to enforce this
+                  (default is 1)
+    """
+    # this should be made back into a keyword argument once something better
+    # than multiprocessing.Pool can be found (see FIXME above)
+    ncpus = 1
+
+
     # this might be better handled as a keyword argument
     ion_rho = 6500e3
 
@@ -1284,21 +1313,75 @@ def extractQuantities(path='./', run='',
                      (mixN_weights * JphiN_interp/1e6, 
                       mixN_weights * JthetaN_interp/1e6)
                   )
-                  (dBxN_ion,
-                   dByN_ion,
-                   dBzN_ion) = dalecs_N_ion.bs_cart((obs_x, obs_y, obs_z),
-                                                    matrix=mix_bs_mx)
                   
+                  
+                  # begin dB Pool
+
+                  if ncpus > 1:
+              
+                     # create a list of argument lists for bs_cart
+                     bs_args = [[obs_xyz] for obs_xyz in 
+                                zip(p.array_split(obs_x, ncpus), 
+                                    p.array_split(obs_y, ncpus), 
+                                    p.array_split(obs_z, ncpus) ) ]
+
+                     # if Pooling parallel processes, it is not possible to use
+                     # dalecs.bs_cart's matrix optimization; ths is probably a 
+                     # good thing because the latter can be a memory hog
+                     with Pool(processes=ncpus) as pool:
+                       (dBxN_ion,
+                         dByN_ion,
+                         dBzN_ion) = (p.hstack(out) for out in
+                                      zip(*pool.starmap(
+                                         dalecs_N_ion.bs_cart, bs_args
+                                         ))
+                                     )
+                  else:
+                     (dBxN_ion,
+                      dByN_ion,
+                      dBzN_ion) = dalecs_N_ion.bs_cart((obs_x, obs_y, obs_z),
+                                                       matrix=mix_bs_mx)
+                  
+                  # end dB Pool
+
+
                   dalecs_N_fac.scale(
                      (mixN_weights * JphiN_interp/1e6, 
                       mixN_weights * JthetaN_interp/1e6)
                   )
-                  (dBxN_fac,
-                   dByN_fac,
-                   dBzN_fac) = dalecs_N_fac.bs_cart((obs_x, obs_y, obs_z),
-                                                    matrix=mix_bs_mx)
                   
+                  
+                  
+                  
+                  # begin dB Pool
 
+                  if ncpus > 1:
+                     # create a list of argument lists for bs_cart
+                     bs_args = [[obs_xyz] for obs_xyz in 
+                                zip(p.array_split(obs_x, ncpus), 
+                                    p.array_split(obs_y, ncpus), 
+                                    p.array_split(obs_z, ncpus) ) ]
+
+                     # if Pooling parallel processes, it is not possible to use
+                     # dalecs.bs_cart's matrix optimization; ths is probably a 
+                     # good thing because the latter can be a memory hog
+                     with Pool(processes=ncpus) as pool:
+                        (dBxN_fac,
+                         dByN_fac,
+                         dBzN_fac) = (p.hstack(out) for out in
+                                      zip(*pool.starmap(
+                                         dalecs_N_fac.bs_cart, bs_args
+                                         ))
+                                     )
+                  else:
+                     (dBxN_fac,
+                      dByN_fac,
+                      dBzN_fac) = dalecs_N_fac.bs_cart((obs_x, obs_y, obs_z),
+                                                       matrix=mix_bs_mx)
+                  
+                  # end dB Pool
+                  
+                  
                   print("...done after %f seconds"%(perf_counter() - begin))
                   
 
@@ -1310,22 +1393,76 @@ def extractQuantities(path='./', run='',
                   dalecs_S_ion.scale(
                      (mixS_weights * JphiS_interp/1e6, 
                       mixS_weights * JthetaS_interp/1e6)
-                  )
-                  (dBxS_ion,
-                   dByS_ion,
-                   dBzS_ion) = dalecs_S_ion.bs_cart((obs_x, obs_y, obs_z),
-                                                    matrix=mix_bs_mx)
+                  ) 
                   
+
+                  # begin dB Pool
+
+                  if ncpus > 1:
+                     # create a list of argument lists for bs_cart
+                     bs_args = [[obs_xyz] for obs_xyz in 
+                                zip(p.array_split(obs_x, ncpus), 
+                                    p.array_split(obs_y, ncpus), 
+                                    p.array_split(obs_z, ncpus) ) ]
+
+                     # if Pooling parallel processes, it is not possible to use
+                     # dalecs.bs_cart's matrix optimization; ths is probably a 
+                     # good thing because the latter can be a memory hog
+                     with Pool(processes=ncpus) as pool:
+                        (dBxS_ion,
+                         dByS_ion,
+                         dBzS_ion) = (p.hstack(out) for out in
+                                      zip(*pool.starmap(
+                                         dalecs_S_ion.bs_cart, bs_args
+                                         ))
+                                     )
+                  else:
+                     (dBxS_ion,
+                      dByS_ion,
+                      dBzS_ion) = dalecs_S_ion.bs_cart((obs_x, obs_y, obs_z),
+                                                       matrix=mix_bs_mx)
+                  
+                  # end dB Pool
+
+
+
+
+
                   dalecs_S_fac.scale(
                      (mixS_weights * JphiS_interp/1e6, 
                       mixS_weights * JthetaS_interp/1e6)
                   )
-                  (dBxS_fac,
-                   dByS_fac,
-                   dBzS_fac) = dalecs_S_fac.bs_cart((obs_x, obs_y, obs_z),
-                                                    matrix=mix_bs_mx)
                   
+                  
+                  # begin dB Pool
 
+                  if ncpus > 1:
+                     # create a list of argument lists for bs_cart
+                     bs_args = [[obs_xyz] for obs_xyz in 
+                                zip(p.array_split(obs_x, ncpus), 
+                                    p.array_split(obs_y, ncpus), 
+                                    p.array_split(obs_z, ncpus) ) ]
+
+                     # if Pooling parallel processes, it is not possible to use
+                     # dalecs.bs_cart's matrix optimization; ths is probably a 
+                     # good thing because the latter can be a memory hog
+                     with Pool(processes=ncpus) as pool:
+                        (dBxS_fac,
+                         dByS_fac,
+                         dBzS_fac) = (p.hstack(out) for out in
+                                      zip(*pool.starmap(
+                                         dalecs_S_fac.bs_cart, bs_args
+                                         ))
+                                     )
+                  else:
+                     (dBxS_fac,
+                      dByS_fac,
+                      dBzS_fac) = dalecs_S_fac.bs_cart((obs_x, obs_y, obs_z),
+                                                       matrix=mix_bs_mx)
+                  
+                  # end dB Pool
+                  
+                  
                   print("...done after %f seconds"%(perf_counter() - begin))
                   
               else:
@@ -1522,20 +1659,75 @@ def extractQuantities(path='./', run='',
                      (TIE_weights * JphiT_interp, 
                       TIE_weights * JthetaT_interp)
                   )
-                  (dBxTIE_ion,
-                   dByTIE_ion,
-                   dBzTIE_ion) = dalecs_T_ion.bs_cart((obs_x, obs_y, obs_z),
-                                                      matrix=tie_bs_mx)
-                                    
+                  
+                  
+
+                  # begin dB Pool
+
+                  if ncpus > 1:
+                     # create a list of argument lists for bs_cart
+                     bs_args = [[obs_xyz] for obs_xyz in 
+                                zip(p.array_split(obs_x, ncpus), 
+                                    p.array_split(obs_y, ncpus), 
+                                    p.array_split(obs_z, ncpus) ) ]
+
+                     # if Pooling parallel processes, it is not possible to use
+                     # dalecs.bs_cart's matrix optimization; ths is probably a 
+                     # good thing because the latter can be a memory hog
+                     with Pool(processes=ncpus) as pool:
+                        (dBxTIE_ion,
+                         dByTIE_ion,
+                         dBzTIE_ion) = (p.hstack(out) for out in
+                                        zip(*pool.starmap(
+                                          dalecs_T_ion.bs_cart, bs_args
+                                          ))
+                                       )
+                  else:
+                     (dBxTIE_ion,
+                      dByTIE_ion,
+                      dBzTIE_ion) = dalecs_T_ion.bs_cart((obs_x, obs_y, obs_z),
+                                                         matrix=mix_bs_mx)
+                  
+                  # end dB Pool
+
+
+
                   dalecs_T_fac.scale(
                      (TIE_weights * JphiT_interp, 
                       TIE_weights * JthetaT_interp)
                   )
-                  (dBxTIE_fac,
-                   dByTIE_fac,
-                   dBzTIE_fac) = dalecs_T_fac.bs_cart((obs_x, obs_y, obs_z),
-                                                      matrix=tie_bs_mx)
+                  
+                  
 
+                  # begin dB Pool
+
+                  if ncpus > 1:
+                     # create a list of argument lists for bs_cart
+                     bs_args = [[obs_xyz] for obs_xyz in 
+                                zip(p.array_split(obs_x, ncpus), 
+                                    p.array_split(obs_y, ncpus), 
+                                    p.array_split(obs_z, ncpus) ) ]
+
+                     # if Pooling parallel processes, it is not possible to use
+                     # dalecs.bs_cart's matrix optimization; ths is probably a 
+                     # good thing because the latter can be a memory hog
+                     with Pool(processes=ncpus) as pool:
+                        (dBxTIE_fac,
+                         dByTIE_fac,
+                         dBzTIE_fac) = (p.hstack(out) for out in
+                                        zip(*pool.starmap(
+                                           dalecs_T_fac.bs_cart, bs_args
+                                           ))
+                                       )
+                  else:
+                     (dBxTIE_fac,
+                      dByTIE_fac,
+                      dBzTIE_fac) = dalecs_T_fac.bs_cart((obs_x, obs_y, obs_z),
+                                                         matrix=mix_bs_mx)
+                  
+                  # end dB Pool
+
+                  
                   print("...done after %f seconds"%(perf_counter() - begin))
 
               else:
@@ -1564,17 +1756,44 @@ def extractQuantities(path='./', run='',
                   Bz_sm = dLFM.read('bz_', time) # this is in G
                   Jx_sm, Jy_sm, Jz_sm = pyLTR.Physics.LFMCurrent(
                     hgridcc, Bx_sm, By_sm, Bz_sm, rion=1) # ...should be A/m^2 given default input units
-                                    
-                  # integrate BS equations in SM
-                  (dBxLFM,
-                   dByLFM,
-                   dBzLFM) = DALECS.bs_cart(
-                      (xJ_sm, yJ_sm, zJ_sm),
-                      (Jx_sm, Jy_sm, Jz_sm),
-                      dV_sm,
-                      (obs_x_sm, obs_y_sm, obs_z_sm)
-                  )
                   
+
+                  # begin dB Pool
+
+                  if ncpus > 1:
+                     # create a list of argument lists for bs_cart
+                     bs_args = [[(xJ_sm, yJ_sm, zJ_sm),
+                                 (Jx_sm, Jy_sm, Jz_sm),
+                                 dV_sm,
+                                 obs_xyz] for obs_xyz in 
+                                zip(p.array_split(obs_x_sm, ncpus), 
+                                    p.array_split(obs_y_sm, ncpus), 
+                                    p.array_split(obs_z_sm, ncpus) ) ]
+
+                     # if Pooling parallel processes, it is not possible to use
+                     # dalecs.bs_cart's matrix optimization; ths is probably a 
+                     # good thing because the latter can be a memory hog
+                     with Pool(processes=ncpus) as pool:
+                        (dBxLFM,
+                         dByLFM,
+                         dBzLFM) = (p.hstack(out) for out in
+                                      zip(*pool.starmap(
+                                          DALECS.bs_cart, bs_args
+                                          ))
+                                      )
+                  else:
+                     (dBxLFM,
+                      dByLFM,
+                      dBzLFM) = DALECS.bs_cart(
+                         (xJ_sm, yJ_sm, zJ_sm),
+                         (Jx_sm, Jy_sm, Jz_sm),
+                         dV_sm,
+                         (obs_x_sm, obs_y_sm, obs_z_sm)
+                     )
+
+                  # end dB Pool
+
+
                   # rotate dB?LFM into requested coordinates
                   if geoGrid:
                      # rotate output SM locations into GEO coordinates
@@ -1624,7 +1843,7 @@ def extractQuantities(path='./', run='',
                  obs_x, obs_y, obs_z, dBxLFM, dByLFM, dBzLFM
               )                                     
 
-              
+
               # combine dBs into lists of dicts, then dump to binary file
               toPickle = {}
 
