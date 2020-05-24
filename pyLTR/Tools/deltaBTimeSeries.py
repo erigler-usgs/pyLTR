@@ -650,11 +650,6 @@ def extractQuantities(path='./', run='',
       longNdict = {'data':thetaN,'name':r'\phi','units':r'rad'}
       colatNdict = {'data':n.arcsin(rN),'name':r'\theta','units':r'rad'}
       
-      # this will get initialized the first time they are needed in the loop
-      # (FIXME: consider making these an input parameter)
-      dalecs_N_ion = None
-      dalecs_N_fac = None
-      
       
       # Southern hemisphere
       xS = xN
@@ -668,17 +663,22 @@ def extractQuantities(path='./', run='',
       longSdict = {'data':thetaS,'name':r'\phi','units':r'rad'}
       colatSdict = {'data':p.pi-n.arcsin(rS),'name':r'\theta','units':r'rad'}
 
-      # this will get initialized the first time they are needed in the loop
-      # (FIXME: consider making these an input parameter)
-      dalecs_S_ion = None
-      dalecs_S_fac = None
     
-      
       # preliminary MIX weights; will be modified if there are TIEGCM data
       mixN_weights = p.ones(xN.shape)
       mixS_weights = p.ones(xN.shape)
       
+    # this will get initialized the first time they are needed in the loop
+    # (FIXME: consider making these an input parameter)
+    dalecs_N_ion = None
+    dalecs_N_fac = None
+      
+    # this will get initialized the first time they are needed in the loop
+    # (FIXME: consider making these an input parameter)
+    dalecs_S_ion = None
+    dalecs_S_fac = None
     
+
     if dTIE:
       # TIEGCM grid
 
@@ -721,15 +721,15 @@ def extractQuantities(path='./', run='',
                     else 0
          )
 
-      # this will get initialized the first time they are needed in the loop
-      # (FIXME: consider making these an input parameter)
-      dalecs_T_ion = None
-      dalecs_T_fac = None
-
 
       TIE_weights[:,0] = 0 # force zero at south pole
       TIE_weights[:,-1] = 0 # force zero at north pole
       
+    # this will get initialized the first time they are needed in the loop
+    # (FIXME: consider making these an input parameter)
+    dalecs_T_ion = None
+    dalecs_T_fac = None
+
         
 
     if dLFM:
@@ -1275,11 +1275,13 @@ def extractQuantities(path='./', run='',
                      print("   ...ionospheric currents")
                      # create 1-amp DALECS to be scaled inside the loop
                      dalecs_N_ion = DALECS.dalecs((longNdict['data'], colatNdict['data']),
-                                                   ion_rho=ion_rho, fac=False, equator=False)
+                                                   ion_rho=ion_rho, fac=False, equator=False,
+                                                   nprocs=nprocs)
                            
                      print("   ...field-aligned currents")
                      dalecs_N_fac = DALECS.dalecs((longNdict['data'], colatNdict['data']),
-                                                   ion_rho=ion_rho, iono=False)
+                                                   ion_rho=ion_rho, iono=False,
+                                                   nprocs=nprocs)
                            
                      dalecs_N_fac = dalecs_N_fac.trim(rho_max=2.5*ion_rho)
                      
@@ -1305,11 +1307,13 @@ def extractQuantities(path='./', run='',
                      print("   ...ionospheric currents")
                      # create 1-amp DALECS to be scaled inside the loop
                      dalecs_S_ion = DALECS.dalecs((longSdict['data'], colatSdict['data']),
-                                                   ion_rho=ion_rho, fac=False, equator=False)
+                                                   ion_rho=ion_rho, fac=False, equator=False,
+                                                   nprocs=nprocs)
                            
                      print("   ...field-aligned currents")
                      dalecs_S_fac = DALECS.dalecs((longSdict['data'], colatSdict['data']),
-                                                   ion_rho=ion_rho, iono=False)
+                                                   ion_rho=ion_rho, iono=False,
+                                                   nprocs=nprocs)
                            
                      dalecs_S_fac = dalecs_S_fac.trim(rho_max=2.5*ion_rho)
                      
@@ -1318,12 +1322,7 @@ def extractQuantities(path='./', run='',
                      dalecs_S_ion.cartesian()
                      dalecs_S_fac.cartesian()
 
-                     
-                     # push DALECSs to pool of workers
-                     pool_dalecs_S_ion = Pool(nprocs, initializer, (dalecs_S_ion,))
-                     pool_dalecs_S_fac = Pool(nprocs, initializer, (dalecs_S_fac,))
-                     
-                     
+                                          
                      print("done after %f seconds"%(perf_counter() - begin))
 
 
@@ -1333,72 +1332,26 @@ def extractQuantities(path='./', run='',
                   begin = perf_counter()
                                     
                   
-                  if nprocs > 1:
-              
-                     # scale DALECS in each worker
-                     _ = pool_dalecs_N_ion.map(
-                        scale_parallel, 
-                        ((mixN_weights * JphiN_interp/1e6,
-                          mixN_weights * JthetaN_interp/1e6) 
-                         for _ in range(nprocs) )
-                     )
+                  dalecs_N_ion.scale(
+                     (mixN_weights * JphiN_interp/1e6, 
+                     mixN_weights * JthetaN_interp/1e6)
+                  )
 
-                     # integrate Biot-Savart in each worker; return results
-                     bs_args = [(obs_xyz,) for obs_xyz in 
-                                zip(p.array_split(obs_x, nprocs), 
-                                    p.array_split(obs_y, nprocs), 
-                                    p.array_split(obs_z, nprocs) ) ]
-                     (dBxN_ion,
-                      dByN_ion,
-                      dBzN_ion) = (p.hstack(result) for result in
-                                     zip(*pool_dalecs_N_ion.starmap(
-                                        bs_parallel, bs_args))
-                                    )
-
-                  else:
-                     dalecs_N_ion.scale(
-                        (mixN_weights * JphiN_interp/1e6, 
-                        mixN_weights * JthetaN_interp/1e6)
-                     )
-
-                     (dBxN_ion,
-                      dByN_ion,
-                      dBzN_ion) = dalecs_N_ion.bs_cart((obs_x, obs_y, obs_z),
-                                                       matrix=mix_bs_mx)                  
+                  (dBxN_ion,
+                     dByN_ion,
+                     dBzN_ion) = dalecs_N_ion.bs_cart((obs_x, obs_y, obs_z),
+                                                      matrix=mix_bs_mx)                  
                   
                   
-                  if nprocs > 1:
-                     
-                     # scale DALECS in each worker
-                     _ = pool_dalecs_N_fac.map(
-                        scale_parallel, 
-                        ((mixN_weights * JphiN_interp/1e6,
-                          mixN_weights * JthetaN_interp/1e6) 
-                         for _ in range(nprocs) )
-                     )
-
-                     # integrate Biot-Savart in each worker; return results
-                     bs_args = [(obs_xyz,) for obs_xyz in 
-                                zip(p.array_split(obs_x, nprocs), 
-                                    p.array_split(obs_y, nprocs), 
-                                    p.array_split(obs_z, nprocs) ) ]
-                     (dBxN_fac,
-                      dByN_fac,
-                      dBzN_fac) = (p.hstack(result) for result in
-                                     zip(*pool_dalecs_N_fac.starmap(
-                                        bs_parallel, bs_args))
-                                    )
-
-                  else:
-                     dalecs_N_fac.scale(
-                        (mixN_weights * JphiN_interp/1e6, 
-                        mixN_weights * JthetaN_interp/1e6)
-                     )
-                  
-                     (dBxN_fac,
-                      dByN_fac,
-                      dBzN_fac) = dalecs_N_fac.bs_cart((obs_x, obs_y, obs_z),
-                                                       matrix=mix_bs_mx)
+                  dalecs_N_fac.scale(
+                     (mixN_weights * JphiN_interp/1e6, 
+                     mixN_weights * JthetaN_interp/1e6)
+                  )
+               
+                  (dBxN_fac,
+                     dByN_fac,
+                     dBzN_fac) = dalecs_N_fac.bs_cart((obs_x, obs_y, obs_z),
+                                                      matrix=mix_bs_mx)
                                     
                   
                   print("...done after %f seconds"%(perf_counter() - begin))
@@ -1410,72 +1363,25 @@ def extractQuantities(path='./', run='',
                   begin = perf_counter()
                   
 
-
-                  if nprocs > 1:
-                     
-                     # scale DALECS in each worker
-                     _ = pool_dalecs_S_ion.map(
-                        scale_parallel, 
-                        ((mixS_weights * JphiS_interp/1e6,
-                          mixS_weights * JthetaS_interp/1e6) 
-                         for _ in range(nprocs) )
-                     )
-
-                     # integrate Biot-Savart in each worker; return results
-                     bs_args = [(obs_xyz,) for obs_xyz in 
-                                zip(p.array_split(obs_x, nprocs), 
-                                    p.array_split(obs_y, nprocs), 
-                                    p.array_split(obs_z, nprocs) ) ]
-                     (dBxS_ion,
-                      dByS_ion,
-                      dBzS_ion) = (p.hstack(result) for result in
-                                     zip(*pool_dalecs_S_ion.starmap(
-                                        bs_parallel, bs_args))
-                                    )
-
-                  else:
-                     dalecs_S_ion.scale(
-                        (mixS_weights * JphiS_interp/1e6, 
-                        mixS_weights * JthetaS_interp/1e6)
-                     ) 
-                  
-                     (dBxS_ion,
-                      dByS_ion,
-                      dBzS_ion) = dalecs_S_ion.bs_cart((obs_x, obs_y, obs_z),
-                                                       matrix=mix_bs_mx)
+                  dalecs_S_ion.scale(
+                     (mixS_weights * JphiS_interp/1e6, 
+                     mixS_weights * JthetaS_interp/1e6)
+                  ) 
+               
+                  (dBxS_ion,
+                     dByS_ion,
+                     dBzS_ion) = dalecs_S_ion.bs_cart((obs_x, obs_y, obs_z),
+                                                      matrix=mix_bs_mx)
 
 
-                  if nprocs > 1:
-                     
-                     # scale DALECS in each worker
-                     _ = pool_dalecs_S_fac.map(
-                        scale_parallel, 
-                        ((mixS_weights * JphiS_interp/1e6,
-                          mixS_weights * JthetaS_interp/1e6) 
-                         for _ in range(nprocs) )
-                     )
-
-                     # integrate Biot-Savart in each worker; return results
-                     bs_args = [(obs_xyz,) for obs_xyz in 
-                                zip(p.array_split(obs_x, nprocs), 
-                                    p.array_split(obs_y, nprocs), 
-                                    p.array_split(obs_z, nprocs) ) ]
-                     (dBxS_fac,
-                      dByS_fac,
-                      dBzS_fac) = (p.hstack(result) for result in
-                                     zip(*pool_dalecs_S_fac.starmap(
-                                        bs_parallel, bs_args))
-                                    )
-
-                  else:
-                     dalecs_S_fac.scale(
-                        (mixS_weights * JphiS_interp/1e6, 
-                        mixS_weights * JthetaS_interp/1e6)
-                     )
-                     (dBxS_fac,
-                      dByS_fac,
-                      dBzS_fac) = dalecs_S_fac.bs_cart((obs_x, obs_y, obs_z),
-                                                       matrix=mix_bs_mx)
+                  dalecs_S_fac.scale(
+                     (mixS_weights * JphiS_interp/1e6, 
+                     mixS_weights * JthetaS_interp/1e6)
+                  )
+                  (dBxS_fac,
+                     dByS_fac,
+                     dBzS_fac) = dalecs_S_fac.bs_cart((obs_x, obs_y, obs_z),
+                                                      matrix=mix_bs_mx)
                                     
                   
                   print("...done after %f seconds"%(perf_counter() - begin))
@@ -1637,7 +1543,6 @@ def extractQuantities(path='./', run='',
 
 
 
-
                   if dalecs_T_ion is None:
 
                      print()
@@ -1647,11 +1552,13 @@ def extractQuantities(path='./', run='',
                      # initialize DALECS for ionosphere and field-aligned currents
                      print("   ...ionospheric currents")
                      dalecs_T_ion = DALECS.dalecs((phiT_mag_interp, thetaT_mag_interp),
-                                                   ion_rho=ion_rho, fac=False, equator=False)
+                                                   ion_rho=ion_rho, fac=False, equator=False,
+                                                   nprocs=nprocs)
                            
                      print("   ...field-aligned currents")
                      dalecs_T_fac = DALECS.dalecs((phiT_mag_interp, thetaT_mag_interp),
-                                                   ion_rho=ion_rho, iono=False)
+                                                   ion_rho=ion_rho, iono=False,
+                                                   nprocs=nprocs)
                      
                      dalecs_T_fac = dalecs_T_fac.trim(rho_max=2.5*ion_rho)
                         
@@ -1659,13 +1566,7 @@ def extractQuantities(path='./', run='',
                      dalecs_T_ion.cartesian()
                      dalecs_T_fac.cartesian()
                      
-                     # push DALECSs to pool of workers
-                     pool_dalecs_T_ion = Pool(nprocs, initializer, (dalecs_T_ion,))
-                     pool_dalecs_T_fac = Pool(nprocs, initializer, (dalecs_T_fac,))
-
                      print("done after %f seconds"%(perf_counter() - begin))
-
-
 
 
 
@@ -1675,68 +1576,23 @@ def extractQuantities(path='./', run='',
                   begin = perf_counter()
                   
                   
-                  
-                  if nprocs > 1:
-                     # scale DALECS in each worker
-                     _ = pool_dalecs_T_ion.map(
-                        scale_parallel, 
-                        ((TIE_weights * JphiT_interp,
-                          TIE_weights * JthetaT_interp) 
-                         for _ in range(nprocs) )
-                     )
-
-                     # integrate Biot-Savart in each worker; return results
-                     bs_args = [(obs_xyz,) for obs_xyz in 
-                                zip(p.array_split(obs_x, nprocs), 
-                                    p.array_split(obs_y, nprocs), 
-                                    p.array_split(obs_z, nprocs) ) ]
-                     (dBxTIE_ion,
-                      dByTIE_ion,
-                      dBzTIE_ion) = (p.hstack(result) for result in
-                                     zip(*pool_dalecs_T_ion.starmap(
-                                        bs_parallel, bs_args))
-                                    )
-
-                  else:
-                     dalecs_T_ion.scale(
-                        (TIE_weights * JphiT_interp, 
-                        TIE_weights * JthetaT_interp)
-                     )
-                     (dBxTIE_ion,
-                      dByTIE_ion,
-                      dBzTIE_ion) = dalecs_T_ion.bs_cart((obs_x, obs_y, obs_z),
-                                                         matrix=mix_bs_mx)
+                  dalecs_T_ion.scale(
+                     (TIE_weights * JphiT_interp, 
+                     TIE_weights * JthetaT_interp)
+                  )
+                  (dBxTIE_ion,
+                     dByTIE_ion,
+                     dBzTIE_ion) = dalecs_T_ion.bs_cart((obs_x, obs_y, obs_z),
+                                                        matrix=mix_bs_mx)
 
 
-                  if nprocs > 1:
-                     # scale DALECS in each worker
-                     _ = pool_dalecs_T_fac.map(
-                        scale_parallel, 
-                        ((TIE_weights * JphiT_interp,
-                          TIE_weights * JthetaT_interp) 
-                         for _ in range(nprocs) )
-                     )
-
-                     # integrate Biot-Savart in each worker; return results
-                     bs_args = [(obs_xyz,) for obs_xyz in 
-                                zip(p.array_split(obs_x, nprocs), 
-                                    p.array_split(obs_y, nprocs), 
-                                    p.array_split(obs_z, nprocs) ) ]
-                     (dBxTIE_fac,
-                      dByTIE_fac,
-                      dBzTIE_fac) = (p.hstack(result) for result in
-                                     zip(*pool_dalecs_T_fac.starmap(
-                                        bs_parallel, bs_args))
-                                    )
-                     
-                  else:
-                     dalecs_T_fac.scale(
-                        (TIE_weights * JphiT_interp, 
-                        TIE_weights * JthetaT_interp)
-                     )
-                     (dBxTIE_fac,
-                      dByTIE_fac,
-                      dBzTIE_fac) = dalecs_T_fac.bs_cart((obs_x, obs_y, obs_z),
+                  dalecs_T_fac.scale(
+                     (TIE_weights * JphiT_interp, 
+                     TIE_weights * JthetaT_interp)
+                  )
+                  (dBxTIE_fac,
+                     dByTIE_fac,
+                     dBzTIE_fac) = dalecs_T_fac.bs_cart((obs_x, obs_y, obs_z),
                                                          matrix=mix_bs_mx)
                   
                   
@@ -1770,32 +1626,14 @@ def extractQuantities(path='./', run='',
                     hgridcc, Bx_sm, By_sm, Bz_sm, rion=1) # ...should be A/m^2 given default input units
                   
 
-                  if nprocs > 1:
-                     # create a list of argument lists for bs_cart
-                     bs_args = [((xJ_sm, yJ_sm, zJ_sm),
-                                 (Jx_sm, Jy_sm, Jz_sm),
-                                 dV_sm,
-                                 obs_xyz) for obs_xyz in 
-                                zip(p.array_split(obs_x_sm, nprocs), 
-                                    p.array_split(obs_y_sm, nprocs), 
-                                    p.array_split(obs_z_sm, nprocs) ) ]
-                                          
-                     with Pool(processes=nprocs) as pool:
-                        (dBxLFM,
-                         dByLFM,
-                         dBzLFM) = (p.hstack(out) for out in
-                                      zip(*pool.starmap(
-                                          DALECS.bs_cart, bs_args
-                                          ))
-                                      )
-                  else:
-                     (dBxLFM,
-                      dByLFM,
-                      dBzLFM) = DALECS.bs_cart(
-                         (xJ_sm, yJ_sm, zJ_sm),
-                         (Jx_sm, Jy_sm, Jz_sm),
-                         dV_sm,
-                         (obs_x_sm, obs_y_sm, obs_z_sm)
+                  (dBxLFM,
+                     dByLFM,
+                     dBzLFM) = DALECS.bs_cart(
+                        (xJ_sm, yJ_sm, zJ_sm),
+                        (Jx_sm, Jy_sm, Jz_sm),
+                        dV_sm,
+                        (obs_x_sm, obs_y_sm, obs_z_sm),
+                        nprocs=nprocs
                      )
 
 
@@ -1957,27 +1795,7 @@ def extractQuantities(path='./', run='',
            raise
     if useProgressBar:
        progress.stop()
-       progress.join()
-
-
-    
-
-    if nprocs > 1 and dalecs_N_ion is not None:
-       pool_dalecs_N_ion.close()
-    if nprocs > 1 and dalecs_N_fac is not None:
-       pool_dalecs_N_fac.close()
-    
-    if nprocs > 1 and dalecs_S_ion is not None:
-       pool_dalecs_S_ion.close()
-    if nprocs > 1 and dalecs_S_fac is not None:
-       pool_dalecs_S_fac.close()
-    
-    if nprocs > 1 and dalecs_T_ion is not None:
-       pool_dalecs_T_ion.close()
-    if nprocs > 1 and dalecs_T_fac is not None:
-       pool_dalecs_T_fac.close()
-    
-    
+       progress.join()    
     
     
     #
