@@ -1,4 +1,5 @@
 import numpy as np
+from multiprocessing import Pool, RawArray
 
 class dalecs(object):
   """
@@ -21,9 +22,15 @@ class dalecs(object):
                   (default=True)
   equator       : True generates equatorial segment
                   (default=True)
+  nprocs        : number of parallel processes to use
+                  (default=1)
   """
   def __init__(self, ion_phi_theta, ion_rho=6500e3, ndip=10, isI=False,
-               iono=True, fac=True, equator=True):
+               iono=True, fac=True, equator=True, nprocs=1):
+    
+    # set the number of parallel processes to be used by instance methods that
+    # are capable of using them
+    self.nprocs = nprocs
     
     # for now, DALECS must be defined in spherical coordinates, although once
     # defined, they can be converted to Cartesian and back again; the grid will
@@ -668,7 +675,8 @@ class dalecs(object):
           self.rvecs_type1,
           self.Jvecs_type1,
           self.dvecs_type1,
-          (obs_phis, obs_thetas, obs_rhos)
+          (obs_phis, obs_thetas, obs_rhos),
+          nprocs=self.nprocs
         )
       else:
         obs_Bphis1 = np.zeros(obs_phis.shape)
@@ -683,7 +691,8 @@ class dalecs(object):
           self.rvecs_type2,
           self.Jvecs_type2,
           self.dvecs_type2,
-          (obs_phis, obs_thetas, obs_rhos)
+          (obs_phis, obs_thetas, obs_rhos),
+          nprocs=self.nprocs
         )
       else:
         obs_Bphis2 = np.zeros(obs_phis.shape)
@@ -821,7 +830,8 @@ class dalecs(object):
           self.rvecs_type1,
           self.Jvecs_type1,
           self.dvecs_type1,
-          (obs_x, obs_y, obs_z)
+          (obs_x, obs_y, obs_z),
+          nprocs=self.nprocs
         )
       else:
         obs_Bx1 = np.zeros(obs_x.shape)
@@ -836,7 +846,8 @@ class dalecs(object):
           self.rvecs_type2,
           self.Jvecs_type2,
           self.dvecs_type2,
-          (obs_x, obs_y, obs_z)
+          (obs_x, obs_y, obs_z),
+          nprocs=self.nprocs
         )
       else:
         obs_Bx2 = np.zeros(obs_x.shape)
@@ -2675,7 +2686,7 @@ def _ralecType2(phi_min, phi_max,
 
 
 
-def bs_cart(rvecs, Jvecs, dvecs, observs):
+def bs_cart(rvecs, Jvecs, dvecs, observs, nprocs=1):
    """
    Calculate magnetic perturbation in local Cartesian coordinates, caused by
    currents measured in their own local Cartesian coordinates, using the well-
@@ -2857,7 +2868,6 @@ def bs_cart(rvecs, Jvecs, dvecs, observs):
    # get number of observatories
    nobs = np.size(obs_xs)
 
-
    # pre-allocate output arrays
    # NOTE: these are flattened for now, we will reshape them to match
    #       observs on exit
@@ -2871,9 +2881,9 @@ def bs_cart(rvecs, Jvecs, dvecs, observs):
       ##
       ## This block is a vectorized version of the loop in the following block. It
       ## was tested, and generates results identical to the loop method. Initially,
-      ## I commented it out and used the loop because when more than a few hundred
-      ## observatories are processed, the memory management overhead slowed things
-      ## considerably.
+      ## I commented it out and used the loop because when more than a few dozen to
+      ## a hundred observatories are processed, the memory management overhead 
+      ## slowed things considerably.
       ##
       ## Tested the vectorized code on NCAR's Geyser, which has two terabytes (!)
       ## of RAM, but it is still slower than the following loop. Some day I may
@@ -2925,39 +2935,107 @@ def bs_cart(rvecs, Jvecs, dvecs, observs):
                               dr3 * dlavs.reshape(dlavs.size,1), axis=0).flatten()
         
    else:
-   
-      # loop over observatories
-      for j in range(nobs):
 
-         # get displacement vectors from jth observatory to each current segment
-         dxs = obs_xs[j] - xs
-         dys = obs_ys[j] - ys
-         dzs = obs_zs[j] - zs
- 
-         # cube the magnitude of displacment vector
-         #dr3 = np.sqrt(dxs**2 + dys**2 + dzs**2)**3
-         dr = np.sqrt(dxs*dxs + dys*dys + dzs*dzs)
-         dr3 = dr*dr*dr # avoiding powers leads to 2-3x speed improvement
- 
-         # integrate to get delta_B
-         # NOTE: mu_naught = 4 * pi * 10^-7 Webers/(A*m), which if used here, leads
-         #       to a flux density in units of Tesla. Given there is a 4*pi normalizing
-         #       constant in the Biot-Savart relationsip, we can simply use 10^-7 to
-         #       produce results in Tesla.
-         dBxs[j] = 1e-7 * np.nansum( (Jys * dzs - Jzs * dys) / dr3 * dlavs)
-         dBys[j] = 1e-7 * np.nansum( (Jzs * dxs - Jxs * dzs) / dr3 * dlavs)
-         dBzs[j] = 1e-7 * np.nansum( (Jxs * dys - Jys * dxs) / dr3 * dlavs)
+      # convert xs, ys, zs, Jxs, Jys, Jzs, dlavs to shared memory RawArrays
+      xs = RawArray('f', xs)
+      ys = RawArray('f', ys)
+      zs = RawArray('f', zs)
+      Jxs = RawArray('f', Jxs)
+      Jys = RawArray('f', Jys)
+      Jzs = RawArray('f', Jzs)
+      dlavs = RawArray('f', dlavs)
+            
+      # create a list of argument lists for bs_cart
+      # NOTE: it is not strictly necessary to use array_split() here, but
+      #       it seems to be slightly more efficient than simply passing
+      #       a list of each separate observatory; this is probably because
+      #       there is less overhead associated with copying data to each
+      #       of the worker processes
+      bs_args = [obs_xyz for obs_xyz in 
+                  zip(np.array_split(obs_xs.astype(np.float32), nprocs), 
+                      np.array_split(obs_ys.astype(np.float32), nprocs), 
+                      np.array_split(obs_zs.astype(np.float32), nprocs) ) ]
+      
+      # create and run pool of processes
+      with Pool(processes=nprocs,
+                initializer=_init_bs_cart,
+                initargs=(xs, ys, zs, Jxs, Jys, Jzs, dlavs,)) as pool:
 
-   
+        (dBxs, dBys, dBzs) = (
+            np.hstack(result) 
+              for result in zip(
+                *pool.starmap(
+                  _do_bs_cart,
+                  bs_args)
+              )
+        )
+      
    return (dBxs.reshape(observs[0].shape),
            dBys.reshape(observs[1].shape),
            dBzs.reshape(observs[2].shape))
 
 
+def _init_bs_cart( xs_shared,  ys_shared,  zs_shared,
+                  Jxs_shared, Jys_shared, Jzs_shared,
+                  dlavs_shared):
+   """
+   Initialization method for Pool of worker processes that copies shared 
+   inputs into global variables. These should be multiprocessing.RawArray()
+   variables holding single precision floats.
+   """
+   global xs, ys, zs, Jxs, Jys, Jzs, dlavs
+   
+   xs = np.frombuffer(xs_shared, dtype=np.float32)
+   ys = np.frombuffer(ys_shared, dtype=np.float32)
+   zs = np.frombuffer(zs_shared, dtype=np.float32)
+   Jxs = np.frombuffer(Jxs_shared, dtype=np.float32)
+   Jys = np.frombuffer(Jys_shared, dtype=np.float32)
+   Jzs = np.frombuffer(Jzs_shared, dtype=np.float32)
+   dlavs = np.frombuffer(dlavs_shared, dtype=np.float32)
 
 
+def _do_bs_cart(obs_xs, obs_ys, obs_zs):
+   """
+   Calculate magnetic perterbation in Cartesian coordinates given arrays of
+   observatory coordinates as inputs, and a current (density) distribution
+   defined as global variables for positions (xs, ys, zs), current densities 
+   (Jxs, Jys Jzs), and differential lengths/areas/volumes (dlavs). This is
+   NOT intended to be called directly by a user, but rather it supports a
+   Python multiprocessing wrapper.
+   """
+   # this is not needed, but it reminds us that these are global variables
+   global xs, ys, zs, Jxs, Jys, Jzs, dlavs   
 
-def bs_sphere(rvecs, Jvecs, dvecs, observs):
+   # pre-allocate output arrays
+   dBxs = np.zeros(obs_xs.shape)
+   dBys = np.zeros(obs_ys.shape)
+   dBzs = np.zeros(obs_zs.shape)
+   
+   for j in range(len(obs_xs)):
+   
+      # get displacement vectors from jth observatory to each current segment
+      dxs = obs_xs[j] - xs
+      dys = obs_ys[j] - ys
+      dzs = obs_zs[j] - zs
+    
+      # cube the magnitude of displacment vector
+      #dr3 = np.sqrt(dxs**2 + dys**2 + dzs**2)**3
+      dr = np.sqrt(dxs*dxs + dys*dys + dzs*dzs)
+      dr3 = dr*dr*dr # avoiding powers leads to 2-3x speed improvement
+    
+      # integrate to get delta_B
+      # NOTE: mu_naught = 4 * pi * 10^-7 Webers/(A*m), which if used here, 
+      #       leadsto a flux density in units of Tesla. Given there is a 4*pi 
+      #       normalizing constant in the Biot-Savart relationsip, we can 
+      #       simply use 10^-7 to produce results in Tesla.
+      dBxs[j] = 1e-7 * np.nansum( (Jys * dzs - Jzs * dys) / dr3 * dlavs)
+      dBys[j] = 1e-7 * np.nansum( (Jzs * dxs - Jxs * dzs) / dr3 * dlavs)
+      dBzs[j] = 1e-7 * np.nansum( (Jxs * dys - Jys * dxs) / dr3 * dlavs)
+   
+   return dBxs, dBys, dBzs
+
+
+def bs_sphere(rvecs, Jvecs, dvecs, observs, nprocs=1):
    """
    Calculate magnetic perturbation in local spherical coordinates, caused by
    currents measured in their own local sperical coordinates, using well-known
