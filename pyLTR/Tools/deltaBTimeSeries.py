@@ -1808,7 +1808,7 @@ def extractQuantities(path='./', run='',
        dBTot = pyLTR.TimeSeries()
 
        # insert shared values between different TimeSeries objects
-       dBTot.append('datetime', 'Date & Time', '', timeRange[index0:index1+1])
+       dBTot.append('datetime', 'Date & Time', '', timeRange[index0:index1])
        dBTot.append('doy','Day of Year','days',t_doy)
        dBTot.append('obs',obs_label[obs],'','')
        dBTot.append('phiSM', r'$\phi_{SM}$', 'rad', [phi[obs] for phi in obsSM[0]])
