@@ -11,8 +11,7 @@ import pyLTR
 # 3rd-party
 import pylab as p
 import numpy as n
-from multiprocessing import Pool
-from psutil import cpu_count
+
 
 # Standard
 import pickle
@@ -296,36 +295,6 @@ def _dipoleMF(dBts, geoGrid=False):
    return (Bts)
 
 
-"""
-Initial attempts to parallelize over observatories using  the Pool
-class were ridiculously slow. Apparently everything gets serialized,
-copied to worker processes, de-serialized, processed, re-serialized,
-copied back, and de-serialized again. Since our input objects can be
-very large, this slows down parallel execution immensely. This is a
-well known problem when working with large data objects, and a more
-complete explation can be found here:
-
-https://thelaziestprogrammer.com/python/a-multiprocessing-pool-pickle
-
-There are some special tools available in the multiprocessing module 
-that allow certain data types to be shared between the main and worker 
-processes, but they are not really able to handle a complicated object 
-like our DALECS class. The only remaining option is to be creative 
-with global variables passed to the worker processes. That is what the
-simple methods below are for.
-"""
-def initializer(dalecs):
-   # copy dalecs to worker's global namespace
-   global dalecs_worker
-   dalecs_worker = dalecs
-def scale_parallel(Jion):
-   # scale worker DALECS by Jion
-   dalecs_worker.scale(Jion)
-def bs_parallel(obs_xyz):
-   # integrate Biot-Savart with worker DALECS
-   results = dalecs_worker.bs_cart(obs_xyz)
-   return results
-
 
 def extractQuantities(path='./', run='',
                       t0='', t1='',
@@ -405,17 +374,10 @@ def extractQuantities(path='./', run='',
                   function tries to read pre-computed data.
                   (default is 'figs')
       nprocs    - specify the number of parallel processes over which to 
-                  distribute observatory processing using multiprocessing.Pool
-                  NOTE: if this is not 1, the DALECS matrix optimizations are 
-                        not possible; this is probably a good thing, since
-                        these optimizations can be huge memory hogs.
-                  NOTE: there is overhead associated with parallelizing over
-                        observatories that makes it not especially effective
-                        when the number of observatories is not very large.
-                        Setting nprocs > 1 should only be done when a large
-                        number of observatories might to cause memory issues
-                        when parallelizing over time steps (not unlikely when
-                        the matrix optimzations are enabled).
+                  distribute observatory processing; for now, this method
+                  does not actually do its own multi-processing, but passes
+                  nprocs to routines that know what to do with it, like the
+                  DALECS module Biot-Savart integrator.
                   (default is 1)
     """
 
@@ -1289,12 +1251,7 @@ def extractQuantities(path='./', run='',
                      # unnecessary conversions to/from spherical in the loop
                      dalecs_N_ion.cartesian()
                      dalecs_N_fac.cartesian()
-
-                     
-                     # push DALECSs to pool of workers
-                     pool_dalecs_N_ion = Pool(nprocs, initializer, (dalecs_N_ion,))
-                     pool_dalecs_N_fac = Pool(nprocs, initializer, (dalecs_N_fac,))
-                     
+                                          
                      
                      print("done after %f seconds"%(perf_counter() - begin))
 
@@ -1566,6 +1523,7 @@ def extractQuantities(path='./', run='',
                      dalecs_T_ion.cartesian()
                      dalecs_T_fac.cartesian()
                      
+                     
                      print("done after %f seconds"%(perf_counter() - begin))
 
 
@@ -1813,10 +1771,13 @@ def extractQuantities(path='./', run='',
        dBTot.append('obs',obs_label[obs],'','')
        dBTot.append('phiSM', r'$\phi_{SM}$', 'rad', [phi[obs] for phi in obsSM[0]])
        dBTot.append('phiGEO', r'$\phi_{GEO}$', 'rad', [phi[obs] for phi in obsGEO[0]])
+       dBTot.append('phiMAG', r'$\phi_{MAG}$', 'rad', [phi[obs] for phi in obsMAG[0]])
        dBTot.append('thetaSM', r'$\theta_{SM}$', 'rad', [theta[obs] for theta in obsSM[1]])
        dBTot.append('thetaGEO', r'$\theta_{GEO}$', 'rad', [theta[obs] for theta in obsGEO[1]])
+       dBTot.append('thetaMAG', r'$\theta_{MAG}$', 'rad', [theta[obs] for theta in obsMAG[1]])
        dBTot.append('rhoSM', r'$\rho_{SM}$', 'rad', [rho[obs] for rho in obsSM[2]])
        dBTot.append('rhoGEO', r'$\rho_{GEO}$', 'rad', [rho[obs] for rho in obsGEO[2]])
+       dBTot.append('rhoMAG', r'$\rho_{MAG}$', 'rad', [rho[obs] for rho in obsMAG[2]])
 
        dBIon = cp.deepcopy(dBTot) # deepcopy necessary to retain class attributes/functions
        dBFAC = cp.deepcopy(dBTot) # deepcopy necessary to retain class attributes/functions

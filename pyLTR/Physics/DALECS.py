@@ -3251,7 +3251,7 @@ def bs_sphere(rvecs, Jvecs, dvecs, observs, nprocs=1):
    obs_xs, obs_ys, obs_zs = _sp2cart_pos((obs_phis, obs_thetas, obs_rhos))
 
    # call bs_cart()
-   dBxs, dBys, dBzs = bs_cart((xs,ys,zs),(Jxs,Jys,Jzs),dlavs,(obs_xs,obs_ys,obs_zs))
+   dBxs, dBys, dBzs = bs_cart((xs,ys,zs),(Jxs,Jys,Jzs),dlavs,(obs_xs,obs_ys,obs_zs), nprocs=nprocs)
 
    # # transform outputs back into spherical
    # _,_,_, dBphis, dBthetas, dBrhos = pyLTR.transform.CARtoSPH(obs_xs, obs_ys, obs_zs,
