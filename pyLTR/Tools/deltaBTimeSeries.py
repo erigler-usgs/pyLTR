@@ -693,7 +693,7 @@ def extractQuantities(path='./', run='',
     dalecs_T_fac = None
 
         
-
+    rho_lfm_min = p.inf # this is to trim DALECS; modify if dLFM is True
     if dLFM:
       # LFM MHD grid
 
@@ -709,6 +709,7 @@ def extractQuantities(path='./', run='',
       yJ_sm = yJ_sm/100 # ...and the coordinates should be in meters for BS.py
       zJ_sm = zJ_sm/100 # ...and the coordinates should be in meters for BS.py
       dV_sm = hgridcc.cellVolume()/(100**3) # ...and we need dV in m^3 for BS.py
+      rho_lfm_min = p.sqrt(xJ_sm ** 2 + yJ_sm ** 2 + zJ_sm ** 2).min()
       
 
 
@@ -1245,7 +1246,7 @@ def extractQuantities(path='./', run='',
                                                    ion_rho=ion_rho, iono=False,
                                                    nprocs=nprocs)
                            
-                     dalecs_N_fac = dalecs_N_fac.trim(rho_max=2.5*ion_rho)
+                     dalecs_N_fac = dalecs_N_fac.trim(rho_max=rho_lfm_min)
                      
                      # convert _ion and _fac DALECS to Cartesian coordinates to avoid
                      # unnecessary conversions to/from spherical in the loop
@@ -1272,7 +1273,7 @@ def extractQuantities(path='./', run='',
                                                    ion_rho=ion_rho, iono=False,
                                                    nprocs=nprocs)
                            
-                     dalecs_S_fac = dalecs_S_fac.trim(rho_max=2.5*ion_rho)
+                     dalecs_S_fac = dalecs_S_fac.trim(rho_max=rho_lfm_min)
                      
                      # convert _ion and _fac DALECS to Cartesian coordinates to avoid
                      # unnecessary conversions to/from spherical in the loop
@@ -1517,7 +1518,7 @@ def extractQuantities(path='./', run='',
                                                    ion_rho=ion_rho, iono=False,
                                                    nprocs=nprocs)
                      
-                     dalecs_T_fac = dalecs_T_fac.trim(rho_max=2.5*ion_rho)
+                     dalecs_T_fac = dalecs_T_fac.trim(rho_max=rho_lfm_min)
                         
                      # convert to Cartesian coordinates
                      dalecs_T_ion.cartesian()
